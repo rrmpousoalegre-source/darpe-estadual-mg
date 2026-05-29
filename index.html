@@ -639,6 +639,10 @@ function renderMap() {
           <span class="pop-val ${pLocal?'':'none'}">${pLocal || 'Não informado'}</span>
           <span class="pop-lbl">Coord. Estadual</span>
           <span class="pop-val ${pEstadual?'':'none'}">${pEstadual || 'Não informado'}</span>
+          ${c.cargos && c.cargos.length ? c.cargos.map(cargo => `
+          <span class="pop-lbl">${cargo.tipo}</span>
+          <span class="pop-val">${cargo.nome}</span>
+          `).join('') : ''}
         </div>
       </div>
     `, { maxWidth: 290, minWidth: 230 });
@@ -714,6 +718,7 @@ function renderSidebar(search = '') {
               <div class="city-name">${sq ? hl(c.nome, sq) : c.nome}</div>
               ${c.coordenadorLocal ? `<div class="city-sub">Local: ${c.coordenadorLocal}</div>` : ''}
               ${c.coordenadorEstadual ? `<div class="city-sub">Estadual: ${c.coordenadorEstadual}</div>` : ''}
+              ${c.cargos && c.cargos.length ? c.cargos.map(cargo => `<div class="city-sub" style="color:#C97B3A">${cargo.tipo}: ${cargo.nome}</div>`).join('') : ''}
             </div>
           </div>
         `).join('')}
