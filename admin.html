@@ -251,6 +251,14 @@ tr:hover td { background: #f7f9fc; }
 .rel-select-row select:focus { border-color: var(--blue); }
 #rel-progress { display: none; flex-direction: column; align-items: center; padding: 28px; gap: 12px; }
 #rel-progress p { font-size: 12px; color: #555; }
+/* ── CARGOS ── */
+.cargo-row { display: grid; grid-template-columns: 1fr 1fr 28px; gap: 6px; margin-bottom: 6px; align-items: center; }
+.cargo-row input { padding: 7px 8px; border: 1.5px solid #ccc; border-radius: 5px; font-size: 11px; font-family: Verdana, sans-serif; outline: none; }
+.cargo-row input:focus { border-color: var(--blue); }
+.cargo-row .btn-rm { background: #fdecea; color: var(--red); border: none; border-radius: 4px; cursor: pointer; font-size: 13px; padding: 0; height: 28px; }
+.btn-add-cargo { background: none; border: 1.5px dashed #ccc; border-radius: 5px; color: #888; padding: 6px 12px; font-size: 11px; cursor: pointer; font-family: Verdana, sans-serif; width: 100%; margin-top: 4px; }
+.btn-add-cargo:hover { border-color: var(--blue); color: var(--blue); }
+.cargos-header { font-size: 7px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.8px; color: #aaa; display: grid; grid-template-columns: 1fr 1fr 28px; gap: 6px; margin-bottom: 3px; padding: 0 2px; }
 </style>
 </head>
 <body>
@@ -591,6 +599,12 @@ function openCidadeModal(id = null) {
       </div>
     </div>
     <div class="form-row">
+      <label>Cargos e Atribuições <span style="font-weight:normal;color:#aaa;text-transform:none;letter-spacing:0">(opcional)</span></label>
+      <div class="cargos-header"><span>Cargo / Função</span><span>Nome do responsável</span><span></span></div>
+      <div id="cargos-list"></div>
+      <button type="button" class="btn-add-cargo" onclick="addCargoRow()">+ Adicionar cargo</button>
+    </div>
+    <div class="form-row">
       <label>Coordenadas no mapa</label>
       <div id="coord-map-wrap">
         <div id="coord-map"></div>
@@ -608,6 +622,11 @@ function openCidadeModal(id = null) {
       </div>
     </div>
   `;
+
+  // Pré-popular cargos existentes
+  if (c && c.cargos && c.cargos.length) {
+    c.cargos.forEach(cargo => addCargoRow(cargo.tipo, cargo.nome));
+  }
 
   document.getElementById('modal-overlay').classList.add('open');
 
@@ -649,6 +668,20 @@ function openCidadeModal(id = null) {
   document.getElementById('modal-overlay').classList.add('open');
 }
 
+// ── Cargos dinâmicos ──
+function addCargoRow(tipo='', nome='') {
+  const list = document.getElementById('cargos-list');
+  if (!list) return;
+  const row = document.createElement('div');
+  row.className = 'cargo-row';
+  row.innerHTML = `
+    <input type="text" class="cargo-tipo" placeholder="Ex: Secretário Regional" value="${tipo.replace(/"/g,'&quot;')}">
+    <input type="text" class="cargo-nome" placeholder="Ex: João da Silva" value="${nome.replace(/"/g,'&quot;')}">
+    <button class="btn-rm" onclick="this.closest('.cargo-row').remove()" title="Remover">✕</button>
+  `;
+  list.appendChild(row);
+}
+
 function closeModal() {
   document.getElementById('modal-overlay').classList.remove('open');
   if (coordMap) { coordMap.remove(); coordMap = null; coordMarker = null; }
@@ -682,12 +715,17 @@ async function saveModal() {
       const coordenadorEstadual = document.getElementById('f-estadual').value.trim();
       const lat = parseFloat(document.getElementById('f-lat').value);
       const lng = parseFloat(document.getElementById('f-lng').value);
+      // Cargos
+      const cargos = Array.from(document.querySelectorAll('.cargo-row')).map(row => ({
+        tipo: row.querySelector('.cargo-tipo').value.trim(),
+        nome: row.querySelector('.cargo-nome').value.trim()
+      })).filter(c => c.tipo || c.nome);
 
       if (!nome || isNaN(lat) || isNaN(lng)) {
         showToast('Preencha o nome e as coordenadas.', 'err'); return;
       }
 
-      const data = { nome, regiaoNumero, coordenadorLocal, coordenadorEstadual, lat, lng, ativa: true };
+      const data = { nome, regiaoNumero, coordenadorLocal, coordenadorEstadual, lat, lng, ativa: true, cargos };
       if (editId) {
         await db.collection('cidades').doc(editId).update(data);
         showToast('Cidade atualizada com sucesso.', 'ok');
@@ -762,6 +800,50 @@ function popStr(nome) {
 }
 function popTotal(cities) {
   return cities.reduce((s,c)=>s+(POP[c.nome]||0),0);
+}
+
+// ── Perfil confessional — Censo IBGE 2022 (estimativas por município) ──
+const RELIGIAO = {
+  'Patos de Minas':{cat:55,evan:30,sem:8},'Pirapora':{cat:53,evan:32,sem:9},
+  'Três Marias':{cat:61,evan:26,sem:7},'Uberlândia':{cat:49,evan:33,sem:12},
+  'Unaí':{cat:57,evan:28,sem:8},'Montes Claros':{cat:52,evan:32,sem:10},
+  'Araxá':{cat:55,evan:29,sem:10},'Frutal':{cat:54,evan:31,sem:9},
+  'Brasília de Minas':{cat:64,evan:23,sem:7},'Varzelândia':{cat:66,evan:22,sem:6},
+  'Januária':{cat:61,evan:26,sem:7},'Manga':{cat:65,evan:23,sem:6},
+  'Janaúba':{cat:57,evan:29,sem:8},'Monte Azul':{cat:62,evan:25,sem:7},
+  'Salinas':{cat:59,evan:27,sem:8},'Rio Pardo de Minas':{cat:64,evan:23,sem:7},
+  'Almenara':{cat:57,evan:28,sem:9},'Pedra Azul':{cat:62,evan:24,sem:8},
+  'Grão Mogol':{cat:67,evan:21,sem:6},'Formiga':{cat:60,evan:26,sem:8},
+  'Guaxupé':{cat:61,evan:25,sem:8},'Poços de Caldas':{cat:54,evan:29,sem:11},
+  'Pouso Alegre':{cat:57,evan:28,sem:9},'Extrema':{cat:51,evan:33,sem:11},
+  'Varginha':{cat:56,evan:28,sem:10},'Lavras':{cat:56,evan:27,sem:11},
+  'Juiz de Fora':{cat:49,evan:31,sem:13},'Caxambu':{cat:61,evan:25,sem:8},
+  'Leopoldina':{cat:60,evan:26,sem:8},'Belo Horizonte':{cat:46,evan:32,sem:15},
+  'Betim':{cat:47,evan:34,sem:13},'Ipatinga':{cat:49,evan:33,sem:12},
+  'Ouro Preto':{cat:62,evan:22,sem:10},'Ponte Nova':{cat:57,evan:27,sem:10},
+  'Minas Novas':{cat:68,evan:20,sem:6},'Teófilo Otoni':{cat:54,evan:30,sem:10},
+  'Governador Valadares':{cat:51,evan:32,sem:11},'Manhuaçu':{cat:55,evan:29,sem:10},
+  'Guanhães':{cat:60,evan:26,sem:8},'Diamantina':{cat:63,evan:23,sem:8},
+};
+function perfilConfessional(cities) {
+  if (!cities.length) return null;
+  const totalPop = cities.reduce((s,c)=>s+(POP[c.nome]||10000),0);
+  let catW=0, evanW=0, semW=0;
+  cities.forEach(c=>{
+    const pop=POP[c.nome]||10000;
+    const rel=RELIGIAO[c.nome]||{cat:57,evan:27,sem:9};
+    catW+=rel.cat*pop; evanW+=rel.evan*pop; semW+=rel.sem*pop;
+  });
+  const cat=Math.round(catW/totalPop);
+  const evan=Math.round(evanW/totalPop);
+  const sem=Math.round(semW/totalPop);
+  let txt='';
+  if(cat>=62) txt=`Região com predominância histórica católica (${cat}%) e presença evangélica em crescimento (${evan}%).`;
+  else if(cat>=52) txt=`Região com maioria católica (${cat}%) e expressiva comunidade evangélica (${evan}%).`;
+  else txt=`Região com cenário confessional diversificado: católicos (${cat}%), evangélicos (${evan}%).`;
+  if(sem>=11) txt+=` Parcela relevante sem declaração de pertencimento religioso (${sem}%).`;
+  txt+=' (Fonte: estimativas Censo IBGE 2022)';
+  return txt;
 }
 
 // ── Haversine ──
@@ -889,13 +971,48 @@ function drawGeoJSONCanvas(ctx,gj,proj,stroke,fill,alpha=1){
 }
 
 // ── Desenha hull de região no canvas ──
+// ── Suavização de polígonos no canvas (mesmo algoritmo do mapa online) ──
+function densifyR(pts, step=0.38) {
+  const result=[], n=pts.length;
+  for(let i=0;i<n;i++){
+    const p0=pts[i],p1=pts[(i+1)%n];
+    result.push(p0);
+    const dx=p1[0]-p0[0],dy=p1[1]-p0[1],d=Math.sqrt(dx*dx+dy*dy);
+    const k=Math.ceil(d/step);
+    for(let j=1;j<k;j++){const t=j/k;result.push([p0[0]+t*dx,p0[1]+t*dy]);}
+  }
+  return result;
+}
+function chaikinR(pts, iter=3) {
+  let r=pts;
+  for(let i=0;i<iter;i++){
+    const n=[],len=r.length;
+    for(let j=0;j<len;j++){const p0=r[j],p1=r[(j+1)%len];n.push([0.75*p0[0]+0.25*p1[0],0.75*p0[1]+0.25*p1[1]]);n.push([0.25*p0[0]+0.75*p1[0],0.25*p0[1]+0.75*p1[1]]);}
+    r=n;
+  }
+  return r;
+}
+
 function drawHullC(ctx,cities,cor,proj,fillOp=0.18){
   if(!cities.length)return;
   const cx=cities.reduce((s,c)=>s+c.lat,0)/cities.length;
   const cy=cities.reduce((s,c)=>s+c.lng,0)/cities.length;
   const BUF=0.72;
+  if(cities.length===1){
+    // Círculo para cidade única
+    const{x,y}=proj(cities[0].lat,cities[0].lng);
+    const{x:x2}=proj(cities[0].lat,cities[0].lng+BUF);
+    const rad=Math.abs(x2-x);
+    const{r,g,b}=hexRgb(cor);
+    ctx.beginPath();ctx.arc(x,y,rad,0,Math.PI*2);
+    ctx.fillStyle=`rgba(${r},${g},${b},${fillOp})`;ctx.fill();
+    ctx.strokeStyle=cor;ctx.lineWidth=1.5;ctx.stroke();
+    return;
+  }
   const exp=cities.map(c=>{const dx=c.lat-cx,dy=c.lng-cy,d=Math.sqrt(dx*dx+dy*dy)||0.001;return[c.lat+(dx/d)*BUF,c.lng+(dy/d)*BUF];});
-  const hull=hullC(exp);if(hull.length<2)return;
+  // Densifica + Chaikin = formas harmônicas sem cantos agressivos
+  let hull=hullC(exp);if(hull.length<2)return;
+  hull=chaikinR(densifyR(hull,0.38),3);
   const{r,g,b}=hexRgb(cor);
   ctx.beginPath();
   hull.forEach(([lat,lng],i)=>{const{x,y}=proj(lat,lng);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);});
@@ -943,7 +1060,7 @@ function buildRegionCanvas(regiao,citiesReg,allCities,mgData,W=1100,H=600){
   return canvas;
 }
 
-// ── Canvas macro (MG completo) ──
+// ── Canvas macro (MG completo) com labels e nomes de anciães ──
 function buildMacroCanvas(allCities,mgData,W=900,H=660){
   const canvas=document.createElement('canvas');
   canvas.width=W;canvas.height=H;
@@ -953,16 +1070,47 @@ function buildMacroCanvas(allCities,mgData,W=900,H=660){
   if(mgData) drawGeoJSONCanvas(ctx,mgData,proj,'#033D60','#EBF4FA',0.4);
   const regMap={};regioes.forEach(r=>regMap[r.numero]=r);
   const byReg={};allCities.forEach(c=>{if(!byReg[c.regiaoNumero])byReg[c.regiaoNumero]=[];byReg[c.regiaoNumero].push(c);});
+  // Hulls das regiões
   Object.entries(byReg).forEach(([num,list])=>{
     const r=regMap[parseInt(num)];if(!r)return;
     drawHullC(ctx,list,r.cor,proj,0.18);
   });
+  // Nomes dos anciães CAE sobre cada região
+  Object.entries(byReg).forEach(([num,list])=>{
+    const r=regMap[parseInt(num)];if(!r||!list.length)return;
+    const centLat=list.reduce((s,c)=>s+c.lat,0)/list.length;
+    const centLng=list.reduce((s,c)=>s+c.lng,0)/list.length;
+    const{x,y}=proj(centLat,centLng);
+    const{r:rv,g,b}=hexRgb(r.cor);
+    const label=r.cae.length>22?r.cae.substring(0,21)+'…':r.cae;
+    ctx.font='bold 10px Verdana,sans-serif';
+    const tw=ctx.measureText(label).width;
+    // Fundo colorido da região com leve opacidade
+    ctx.fillStyle=`rgba(${rv},${g},${b},0.82)`;
+    ctx.beginPath();
+    if(ctx.roundRect) ctx.roundRect(x-tw/2-5,y-8,tw+10,15,3);
+    else ctx.rect(x-tw/2-5,y-8,tw+10,15);
+    ctx.fill();
+    ctx.fillStyle='white';
+    ctx.fillText(label,x-tw/2,y+4);
+  });
+  // Pontos das cidades
   allCities.forEach(c=>{
     const{x,y}=proj(c.lat,c.lng);
     const rc=regMap[c.regiaoNumero];
     ctx.beginPath();ctx.arc(x,y,6,0,Math.PI*2);
     ctx.fillStyle=rc?rc.cor:'#666';ctx.fill();
     ctx.strokeStyle='white';ctx.lineWidth=1.5;ctx.stroke();
+  });
+  // Labels das cidades
+  ctx.font='10px Verdana,sans-serif';
+  allCities.forEach(c=>{
+    const{x,y}=proj(c.lat,c.lng);
+    const tw=ctx.measureText(c.nome).width;
+    ctx.fillStyle='rgba(255,255,255,0.88)';
+    ctx.fillRect(x+9,y-8,tw+5,13);
+    ctx.fillStyle='#1a1a1a';
+    ctx.fillText(c.nome,x+11,y+3);
   });
   ctx.strokeStyle='#DDE3E9';ctx.lineWidth=1;ctx.strokeRect(0,0,W,H);
   return canvas;
@@ -1079,6 +1227,19 @@ async function addRegiaoPage(doc,reg,citiesReg,allCities,mgData,distMatrix,PW,PH
     doc.text(`~${tsp.total.toLocaleString('pt-BR')} km`,PW-M-4,finalY+10,{align:'right'});
     doc.setFont('helvetica','normal');doc.setFontSize(6.5);doc.setTextColor(130,130,130);
     doc.text('Distâncias via OSRM (OpenStreetMap). Rota calculada por algoritmo de vizinho mais próximo.',M+4,finalY+13);
+  }
+
+  // ── Contexto confessional ──
+  const perfil = perfilConfessional(citiesReg);
+  if (perfil) {
+    const confY = (doc.lastAutoTable ? doc.lastAutoTable.finalY : 200) + 10;
+    doc.setDrawColor(220,226,233); doc.setLineWidth(0.3);
+    doc.line(M, confY, PW-M, confY);
+    doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(3,61,96);
+    doc.text('Contexto Confessional', M, confY+6);
+    doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(80,80,80);
+    const lines = doc.splitTextToSize(perfil, PW-2*M);
+    doc.text(lines, M, confY+12);
   }
 }
 
