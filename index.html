@@ -208,6 +208,23 @@ body {
 .pop-val { font-size: 11px; color: #2c2c2c; font-weight: 600; }
 .pop-val.none { color: #ccc; font-weight: normal; font-style: italic; }
 
+/* LABEL DAS CIDADES */
+.city-label {
+  background: rgba(255,255,255,0.92) !important;
+  border: none !important;
+  border-radius: 10px !important;
+  box-shadow: 0 1px 5px rgba(0,0,0,0.2) !important;
+  padding: 2px 7px !important;
+  font-size: 10px !important;
+  font-family: Verdana, sans-serif !important;
+  font-weight: bold !important;
+  color: #033D60 !important;
+  white-space: nowrap !important;
+  pointer-events: none !important;
+  transition: opacity 0.2s;
+}
+.city-label::before { display: none !important; }
+
 /* ERROR */
 #err-msg {
   position: fixed; top: 80px; left: 50%; transform: translateX(-50%);
@@ -215,22 +232,54 @@ body {
   font-size: 12px; z-index: 9999; display: none;
 }
 
+/* MOBILE BOTTOM NAV BAR — oculto no desktop */
+#mobile-nav {
+  display: none;
+  position: fixed; bottom: 0; left: 0; right: 0;
+  height: 60px;
+  background: white;
+  border-top: 1px solid #dde3e9;
+  box-shadow: 0 -2px 12px rgba(0,0,0,0.12);
+  z-index: 800;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.nav-tab {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 3px; cursor: pointer; border: none; background: none;
+  font-family: Verdana, sans-serif; color: #999;
+  font-size: 10px; padding: 8px 0;
+  transition: color 0.2s;
+}
+.nav-tab.active { color: var(--blue); }
+.nav-tab .nav-icon { font-size: 20px; line-height: 1; }
+.nav-tab .nav-label { font-size: 10px; font-weight: bold; }
+.nav-tab.active .nav-icon { filter: none; }
+/* Indicador de aba ativa */
+.nav-tab.active::before {
+  content: '';
+  position: absolute; top: 0;
+  width: 48px; height: 3px;
+  background: var(--blue);
+  border-radius: 0 0 3px 3px;
+}
+.nav-tab { position: relative; }
+
 /* MOBILE CLOSE BTN — oculto no desktop */
 #mobile-close-btn {
   display: none; align-items: center; justify-content: space-between;
-  padding: 10px 12px 0; flex-shrink: 0;
+  padding: 4px 14px 8px; flex-shrink: 0;
+  border-bottom: 1px solid #eee;
 }
-#mobile-close-btn span { font-size: 12px; font-weight: bold; color: var(--blue); }
-#mobile-close-btn button {
-  background: var(--blue); color: white; border: none;
-  padding: 8px 18px; border-radius: 20px; font-size: 11px;
-  cursor: pointer; font-family: Verdana, sans-serif;
-}
+#mobile-close-btn span { font-size: 13px; font-weight: bold; color: var(--blue); }
 
 /* MOBILE */
 /* ── MOBILE ── */
 @media (max-width: 700px) {
-  :root { --header-h: 52px; --stats-h: 32px; }
+  :root { --header-h: 52px; --stats-h: 0px; --nav-h: 60px; }
+
+  /* Stats bar: oculta no mobile (info fica no bottom nav) */
+  #stats-bar { display: none; }
 
   /* Header compacto */
   #header { padding: 0 12px; gap: 10px; }
@@ -239,50 +288,60 @@ body {
   .hdr-title p { display: none; }
   #btn-admin { font-size: 10px; padding: 6px 10px; }
 
-  /* Stats compacta */
-  #stats-bar { padding: 0 10px; gap: 12px; font-size: 10px; }
-  .stat span:last-child { display: none; }
+  /* Main sem overflow para o nav ficar fora */
+  #main { flex-direction: column; }
 
-  /* Sidebar: overlay tela cheia, fechado por padrão */
+  /* Mapa ocupa toda a área disponível */
+  #map {
+    position: absolute; top: 0; left: 0; right: 0;
+    bottom: var(--nav-h);
+    width: 100%; z-index: 1;
+  }
+
+  /* Sidebar: painel que sobe de baixo */
   #sidebar {
-    position: absolute; top: 0; left: 0;
-    width: 100% !important; height: 100%;
-    z-index: 600; box-shadow: none;
-    transition: transform 0.3s ease;
-    transform: translateX(0);
+    position: absolute;
+    bottom: var(--nav-h); left: 0; right: 0;
+    width: 100% !important;
+    height: 75vh;
+    max-height: 75vh;
+    border-right: none;
+    border-top: 3px solid var(--blue);
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -4px 24px rgba(0,0,0,0.2);
+    z-index: 600;
+    transition: transform 0.35s cubic-bezier(.4,0,.2,1);
+    transform: translateY(0);
+    overflow: hidden;
   }
   #sidebar.closed {
-    transform: translateX(-100%);
+    transform: translateY(110%);
     width: 100% !important;
   }
 
-  /* Toggle: botão flutuante no mapa */
-  #sb-toggle {
-    position: absolute;
-    left: auto !important; right: 12px;
-    top: auto !important; bottom: 80px;
-    transform: none !important;
-    width: auto; height: auto;
-    padding: 10px 16px;
-    border-radius: 24px;
-    border: none; border-left: none;
-    background: var(--blue);
-    color: white; font-size: 12px; font-weight: bold;
-    box-shadow: 0 3px 12px rgba(0,0,0,0.35);
-    z-index: 700;
+  /* Alça visual no topo do painel */
+  #sidebar::before {
+    content: '';
+    display: block;
+    width: 40px; height: 4px;
+    background: #ccc; border-radius: 2px;
+    margin: 10px auto 6px;
+    flex-shrink: 0;
   }
-  #sb-toggle:hover { background: #022a47; }
 
-  /* Botão fechar dentro do sidebar no mobile */
-  #mobile-close-btn {
-    display: flex;
-  }
+  /* Botão flutuante lateral: ocultar no mobile */
+  #sb-toggle { display: none !important; }
+
+  /* Botão fechar dentro do sidebar */
+  #mobile-close-btn { display: flex !important; }
 
   /* Legenda: ocultar no mobile */
   #legend { display: none; }
 
-  /* Mapa ocupa tela toda */
-  #map { position: absolute; inset: 0; width: 100%; height: 100%; }
+  /* Bottom nav bar */
+  #mobile-nav {
+    display: flex !important;
+  }
 }
 </style>
 </head>
@@ -324,7 +383,6 @@ body {
   <aside id="sidebar">
     <div id="mobile-close-btn">
       <span>Regiões e Cidades</span>
-      <button onclick="toggleSb()">✕ Ver Mapa</button>
     </div>
     <div id="search-box">
       <input type="text" id="search" placeholder="🔍 Buscar cidade, irmão ou CAE..." oninput="doSearch(this.value)">
@@ -338,6 +396,22 @@ body {
     <div id="leg-items"></div>
   </div>
 </div>
+
+<!-- BOTTOM NAV MOBILE -->
+<nav id="mobile-nav">
+  <button class="nav-tab active" id="nav-mapa" onclick="navTab('mapa')">
+    <span class="nav-icon">🗺</span>
+    <span class="nav-label">Mapa</span>
+  </button>
+  <button class="nav-tab" id="nav-regioes" onclick="navTab('regioes')">
+    <span class="nav-icon">☰</span>
+    <span class="nav-label" id="nav-reg-label">Regiões</span>
+  </button>
+  <button class="nav-tab" id="nav-busca" onclick="navTab('busca')">
+    <span class="nav-icon">🔍</span>
+    <span class="nav-label">Buscar</span>
+  </button>
+</nav>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
@@ -385,7 +459,7 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
 }).addTo(map);
 
 // ════════════════════════════════════════════
-//  GEOMETRIA — HULL + BUFFER
+//  GEOMETRIA — HULL + BUFFER + SUAVIZAÇÃO
 // ════════════════════════════════════════════
 function cross(O, A, B) {
   return (A[0]-O[0])*(B[1]-O[1]) - (A[1]-O[1])*(B[0]-O[0]);
@@ -415,26 +489,60 @@ function expandHull(hull, buf = 0.65) {
     return [cx + dx + (dx/len)*buf, cy + dy + (dy/len)*buf];
   });
 }
+// Algoritmo de Chaikin — arredonda cantos do polígono iterativamente
+function chaikin(pts, iter = 5) {
+  let r = pts;
+  for (let i = 0; i < iter; i++) {
+    const n = [];
+    const len = r.length;
+    for (let j = 0; j < len; j++) {
+      const p0 = r[j], p1 = r[(j+1) % len];
+      n.push([0.75*p0[0]+0.25*p1[0], 0.75*p0[1]+0.25*p1[1]]);
+      n.push([0.25*p0[0]+0.75*p1[0], 0.25*p0[1]+0.75*p1[1]]);
+    }
+    r = n;
+  }
+  return r;
+}
+// Cápsula arredondada para 2 pontos (círculo em cada extremidade)
+function capsule(p1, p2, buf = 0.55) {
+  const dx = p2[0]-p1[0], dy = p2[1]-p1[1];
+  const len = Math.sqrt(dx*dx+dy*dy)||1;
+  const ux = dx/len, uy = dy/len;     // vetor unitário ao longo do segmento
+  const px = -uy*buf, py = ux*buf;   // perpendicular
+  const steps = 14;                   // pontos por semicírculo
+  const pts = [];
+  // Semicírculo em torno de p1 (extremidade inicial)
+  for (let i = 0; i <= steps; i++) {
+    const a = Math.PI/2 + (i/steps)*Math.PI;
+    pts.push([
+      p1[0] - ux*buf*0.3 + Math.cos(a)*buf*0.7 + Math.sin(a)*px,
+      p1[1] - uy*buf*0.3 + Math.cos(a)*buf*0.7 + Math.sin(a)*py
+    ]);
+  }
+  // Semicírculo em torno de p2 (extremidade final)
+  for (let i = 0; i <= steps; i++) {
+    const a = -Math.PI/2 + (i/steps)*Math.PI;
+    pts.push([
+      p2[0] + ux*buf*0.3 + Math.cos(a)*buf*0.7 + Math.sin(a)*px,
+      p2[1] + uy*buf*0.3 + Math.cos(a)*buf*0.7 + Math.sin(a)*py
+    ]);
+  }
+  return pts;
+}
 function makeShape(cities) {
   const pts = cities.map(c => [c.lat, c.lng]);
   if (pts.length === 1) {
     return { type:'circle', c: pts[0], r: 75000 };
   }
   if (pts.length === 2) {
-    const [p1, p2] = pts;
-    const dx = p2[0]-p1[0], dy = p2[1]-p1[1];
-    const len = Math.sqrt(dx*dx+dy*dy)||1;
-    const buf = 0.55;
-    const px = -dy/len*buf, py = dx/len*buf;
-    const ex = dx/len*buf*0.5, ey = dy/len*buf*0.5;
-    return { type:'polygon', pts: [
-      [p1[0]-ex+px, p1[1]-ey+py],
-      [p2[0]+ex+px, p2[1]+ey+py],
-      [p2[0]+ex-px, p2[1]+ey-py],
-      [p1[0]-ex-px, p1[1]-ey-py]
-    ]};
+    return { type:'polygon', pts: capsule(pts[0], pts[1], 0.55) };
   }
-  return { type:'polygon', pts: expandHull(convexHull(pts), 0.6) };
+  // Hull expandido + suavização Chaikin
+  const hull = convexHull(pts);
+  const expanded = expandHull(hull, 0.6);
+  const smooth = chaikin(expanded, 5);
+  return { type:'polygon', pts: smooth };
 }
 
 // ════════════════════════════════════════════
@@ -469,7 +577,7 @@ function renderMap() {
     } else {
       layer = L.polygon(shape.pts, {
         color: reg.cor, fillColor: reg.cor,
-        fillOpacity: 0.10, weight: 1.5, opacity: 0.30, smoothFactor: 2
+        fillOpacity: 0.12, weight: 1.5, opacity: 0.35, smoothFactor: 4
       });
     }
     layer.addTo(map);
@@ -509,6 +617,14 @@ function renderMap() {
         </div>
       </div>
     `, { maxWidth: 290, minWidth: 230 });
+
+    // Label permanente com nome da cidade
+    mk.bindTooltip(c.nome, {
+      permanent: true,
+      direction: 'top',
+      offset: [0, -11],
+      className: 'city-label'
+    });
 
     mk.on('click', () => {
       selectRegiao(c.regiaoNumero, false);
@@ -636,6 +752,11 @@ function selectRegiao(num, scroll = false) {
       : { fillOpacity: 0.2, opacity: 0.2 }
     );
     mk.setRadius(isA ? 11 : 7);
+    // Dim/realça label
+    const tt = mk.getTooltip();
+    if (tt && tt.getElement()) {
+      tt.getElement().style.opacity = isA ? '1' : '0.15';
+    }
   });
 
   // Sidebar
@@ -659,14 +780,18 @@ function selectRegiao(num, scroll = false) {
     const bounds = L.latLngBounds(citiesInReg.map(c => [c.lat, c.lng]));
     map.fitBounds(bounds.pad(0.35), { maxZoom: 9, animate: true });
   }
-  // No mobile: fecha o sidebar para revelar o mapa filtrado
-  if (isMobile() && sbOpen) toggleSb();
+  // Mobile: vai para o mapa após selecionar
+  if (isMobile()) navTab('mapa');
 }
 
 function clearFilter() {
   activeRegiao = null;
   Object.values(hulls).forEach(h => h.setStyle({ fillOpacity: 0.10, opacity: 0.30, weight: 1.5 }));
-  Object.values(markers).forEach(mk => { mk.setStyle({ fillOpacity: 1, opacity: 1 }); mk.setRadius(9); });
+  Object.values(markers).forEach(mk => {
+    mk.setStyle({ fillOpacity: 1, opacity: 1 }); mk.setRadius(9);
+    const tt = mk.getTooltip();
+    if (tt && tt.getElement()) tt.getElement().style.opacity = '1';
+  });
   document.querySelectorAll('.rc').forEach(c => c.classList.remove('active'));
   document.getElementById('filter-badge').style.display = 'none';
   map.flyTo([-18.5, -44.8], 6, { duration: 0.8 });
@@ -675,8 +800,7 @@ function clearFilter() {
 function focusCity(id) {
   const c = cidades.find(x => x.id === id);
   if (!c) return;
-  // No mobile: fecha o sidebar para revelar o mapa
-  if (isMobile() && sbOpen) toggleSb();
+  if (isMobile()) navTab('mapa');
   map.flyTo([c.lat, c.lng], 11, { duration: 1.0 });
   setTimeout(() => markers[id] && markers[id].openPopup(), 1100);
 }
@@ -709,11 +833,36 @@ function toggleSb() {
   const sb = document.getElementById('sidebar');
   const btn = document.getElementById('sb-toggle');
   sb.classList.toggle('closed', !sbOpen);
-  if (isMobile()) {
-    btn.textContent = sbOpen ? '✕ Fechar' : '☰ Lista';
-    document.getElementById('mobile-close-btn').style.display = sbOpen ? 'flex' : 'none';
-  } else {
+  if (!isMobile()) {
     btn.textContent = sbOpen ? '◀' : '▶';
+  }
+  setTimeout(() => map.invalidateSize(), 310);
+}
+
+// ── NAVEGAÇÃO MOBILE ──
+function navTab(tab) {
+  if (!isMobile()) return;
+  document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
+
+  if (tab === 'mapa') {
+    document.getElementById('nav-mapa').classList.add('active');
+    if (sbOpen) { sbOpen = false; document.getElementById('sidebar').classList.add('closed'); }
+    document.getElementById('search').value = '';
+    doSearch('');
+  } else if (tab === 'regioes') {
+    document.getElementById('nav-regioes').classList.add('active');
+    sbOpen = true;
+    document.getElementById('sidebar').classList.remove('closed');
+    document.getElementById('mobile-close-btn').style.display = 'flex';
+    // Garante que o campo busca está vazio ao abrir lista
+    const s = document.getElementById('search');
+    if (s.value) { s.value = ''; doSearch(''); }
+  } else if (tab === 'busca') {
+    document.getElementById('nav-busca').classList.add('active');
+    sbOpen = true;
+    document.getElementById('sidebar').classList.remove('closed');
+    document.getElementById('mobile-close-btn').style.display = 'flex';
+    setTimeout(() => document.getElementById('search').focus(), 350);
   }
   setTimeout(() => map.invalidateSize(), 310);
 }
@@ -725,6 +874,31 @@ function updateStats() {
   document.getElementById('s-reg').textContent = regioes.length;
   document.getElementById('s-cid').textContent = cidades.length;
   document.getElementById('s-cae').textContent = new Set(regioes.map(r => r.cae)).size;
+}
+
+// ════════════════════════════════════════════
+//  CONTORNO DO ESTADO DE MINAS GERAIS
+// ════════════════════════════════════════════
+async function loadMGOutline() {
+  try {
+    const res = await fetch(
+      'https://servicodados.ibge.gov.br/api/v3/malhas/estados/31?formato=application/vnd.geo+json'
+    );
+    const geojson = await res.json();
+    L.geoJSON(geojson, {
+      style: {
+        color: '#033D60',
+        weight: 2.5,
+        opacity: 0.6,
+        fillColor: '#033D60',
+        fillOpacity: 0.03,
+        dashArray: null
+      },
+      interactive: false
+    }).addTo(map).bringToBack();
+  } catch(e) {
+    console.warn('Contorno MG não carregado:', e);
+  }
 }
 
 // ════════════════════════════════════════════
@@ -743,6 +917,7 @@ async function loadData() {
     renderSidebar();
     renderLegend();
     updateStats();
+    loadMGOutline(); // Contorno de MG (não bloqueia o carregamento)
 
     document.getElementById('loading').style.display = 'none';
   } catch (err) {
