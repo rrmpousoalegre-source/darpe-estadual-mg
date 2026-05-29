@@ -480,21 +480,12 @@ function convexHull(pts) {
   upper.pop(); lower.pop();
   return lower.concat(upper);
 }
-function expandHull(hull, buf = 0.65) {
-  const cx = hull.reduce((s,p) => s+p[0], 0) / hull.length;
-  const cy = hull.reduce((s,p) => s+p[1], 0) / hull.length;
-  return hull.map(([lat, lng]) => {
-    const dx = lat-cx, dy = lng-cy;
-    const len = Math.sqrt(dx*dx + dy*dy) || 0.0001;
-    return [cx + dx + (dx/len)*buf, cy + dy + (dy/len)*buf];
-  });
-}
-// Algoritmo de Chaikin — arredonda cantos do polígono iterativamente
-function chaikin(pts, iter = 5) {
+
+// Chaikin — arredonda cantos (3 iter = arredondamento leve, sem encolher demais)
+function chaikin(pts, iter = 3) {
   let r = pts;
   for (let i = 0; i < iter; i++) {
-    const n = [];
-    const len = r.length;
+    const n = [], len = r.length;
     for (let j = 0; j < len; j++) {
       const p0 = r[j], p1 = r[(j+1) % len];
       n.push([0.75*p0[0]+0.25*p1[0], 0.75*p0[1]+0.25*p1[1]]);
@@ -504,44 +495,59 @@ function chaikin(pts, iter = 5) {
   }
   return r;
 }
-// Cápsula arredondada para 2 pontos (círculo em cada extremidade)
-function capsule(p1, p2, buf = 0.55) {
+
+// Cápsula geométrica correta — semicírculos em cada extremidade
+function capsule(p1, p2, buf) {
   const dx = p2[0]-p1[0], dy = p2[1]-p1[1];
   const len = Math.sqrt(dx*dx+dy*dy)||1;
-  const ux = dx/len, uy = dy/len;     // vetor unitário ao longo do segmento
-  const px = -uy*buf, py = ux*buf;   // perpendicular
-  const steps = 14;                   // pontos por semicírculo
+  const ux = dx/len, uy = dy/len;   // vetor unitário p1→p2
+  const nx = -uy,    ny =  ux;      // perpendicular (90° CCW)
+  const N = 18;
   const pts = [];
-  // Semicírculo em torno de p1 (extremidade inicial)
-  for (let i = 0; i <= steps; i++) {
-    const a = Math.PI/2 + (i/steps)*Math.PI;
-    pts.push([
-      p1[0] - ux*buf*0.3 + Math.cos(a)*buf*0.7 + Math.sin(a)*px,
-      p1[1] - uy*buf*0.3 + Math.cos(a)*buf*0.7 + Math.sin(a)*py
-    ]);
+  // Semicírculo em p1 (extremidade de trás)
+  for (let i = 0; i <= N; i++) {
+    const a = (i/N) * Math.PI;
+    const qx = Math.cos(a)*nx - Math.sin(a)*ux;
+    const qy = Math.cos(a)*ny - Math.sin(a)*uy;
+    pts.push([p1[0] + qx*buf, p1[1] + qy*buf]);
   }
-  // Semicírculo em torno de p2 (extremidade final)
-  for (let i = 0; i <= steps; i++) {
-    const a = -Math.PI/2 + (i/steps)*Math.PI;
-    pts.push([
-      p2[0] + ux*buf*0.3 + Math.cos(a)*buf*0.7 + Math.sin(a)*px,
-      p2[1] + uy*buf*0.3 + Math.cos(a)*buf*0.7 + Math.sin(a)*py
-    ]);
+  // Semicírculo em p2 (extremidade da frente)
+  for (let i = 0; i <= N; i++) {
+    const a = (i/N) * Math.PI;
+    const qx = -Math.cos(a)*nx + Math.sin(a)*ux;
+    const qy = -Math.cos(a)*ny + Math.sin(a)*uy;
+    pts.push([p2[0] + qx*buf, p2[1] + qy*buf]);
   }
   return pts;
 }
+
 function makeShape(cities) {
   const pts = cities.map(c => [c.lat, c.lng]);
-  if (pts.length === 1) {
-    return { type:'circle', c: pts[0], r: 75000 };
-  }
+  if (pts.length === 1) return { type:'circle', c: pts[0], r: 80000 };
+
+  const BUF = 0.72; // buffer em graus (~80km)
+
   if (pts.length === 2) {
-    return { type:'polygon', pts: capsule(pts[0], pts[1], 0.55) };
+    return { type:'polygon', pts: capsule(pts[0], pts[1], BUF) };
   }
-  // Hull expandido + suavização Chaikin
-  const hull = convexHull(pts);
-  const expanded = expandHull(hull, 0.6);
-  const smooth = chaikin(expanded, 5);
+
+  // CORREÇÃO PRINCIPAL:
+  // Expande CADA cidade individualmente antes de computar o hull.
+  // Isso garante que toda cidade tem seu próprio ponto expandido no polígono,
+  // ao contrário de antes, que só expandia os vértices do hull (cidades no
+  // interior do hull não tinham ponto próprio e podiam cair fora após Chaikin).
+  const cx = pts.reduce((s,p)=>s+p[0],0)/pts.length;
+  const cy = pts.reduce((s,p)=>s+p[1],0)/pts.length;
+
+  const expanded = pts.map(([lat, lng]) => {
+    const dx = lat-cx, dy = lng-cy;
+    const d = Math.sqrt(dx*dx+dy*dy) || 0.001;
+    return [lat + (dx/d)*BUF, lng + (dy/d)*BUF];
+  });
+
+  const hull = convexHull(expanded);
+  // Chaikin com 3 iterações — arredonda sem encolher demais
+  const smooth = chaikin(hull, 3);
   return { type:'polygon', pts: smooth };
 }
 
