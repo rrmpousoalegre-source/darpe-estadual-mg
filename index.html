@@ -215,14 +215,74 @@ body {
   font-size: 12px; z-index: 9999; display: none;
 }
 
+/* MOBILE CLOSE BTN — oculto no desktop */
+#mobile-close-btn {
+  display: none; align-items: center; justify-content: space-between;
+  padding: 10px 12px 0; flex-shrink: 0;
+}
+#mobile-close-btn span { font-size: 12px; font-weight: bold; color: var(--blue); }
+#mobile-close-btn button {
+  background: var(--blue); color: white; border: none;
+  padding: 8px 18px; border-radius: 20px; font-size: 11px;
+  cursor: pointer; font-family: Verdana, sans-serif;
+}
+
 /* MOBILE */
+/* ── MOBILE ── */
 @media (max-width: 700px) {
-  #sidebar {
-    position: absolute; top: 0; bottom: 0; left: 0;
-    height: 100%; z-index: 500; box-shadow: 3px 0 12px rgba(0,0,0,0.2);
-  }
-  #sidebar.closed { width: 0; box-shadow: none; }
+  :root { --header-h: 52px; --stats-h: 32px; }
+
+  /* Header compacto */
+  #header { padding: 0 12px; gap: 10px; }
+  .hdr-logo { width: 32px; height: 32px; font-size: 9px; }
+  .hdr-title h1 { font-size: 12px; }
   .hdr-title p { display: none; }
+  #btn-admin { font-size: 10px; padding: 6px 10px; }
+
+  /* Stats compacta */
+  #stats-bar { padding: 0 10px; gap: 12px; font-size: 10px; }
+  .stat span:last-child { display: none; }
+
+  /* Sidebar: overlay tela cheia, fechado por padrão */
+  #sidebar {
+    position: absolute; top: 0; left: 0;
+    width: 100% !important; height: 100%;
+    z-index: 600; box-shadow: none;
+    transition: transform 0.3s ease;
+    transform: translateX(0);
+  }
+  #sidebar.closed {
+    transform: translateX(-100%);
+    width: 100% !important;
+  }
+
+  /* Toggle: botão flutuante no mapa */
+  #sb-toggle {
+    position: absolute;
+    left: auto !important; right: 12px;
+    top: auto !important; bottom: 80px;
+    transform: none !important;
+    width: auto; height: auto;
+    padding: 10px 16px;
+    border-radius: 24px;
+    border: none; border-left: none;
+    background: var(--blue);
+    color: white; font-size: 12px; font-weight: bold;
+    box-shadow: 0 3px 12px rgba(0,0,0,0.35);
+    z-index: 700;
+  }
+  #sb-toggle:hover { background: #022a47; }
+
+  /* Botão fechar dentro do sidebar no mobile */
+  #mobile-close-btn {
+    display: flex;
+  }
+
+  /* Legenda: ocultar no mobile */
+  #legend { display: none; }
+
+  /* Mapa ocupa tela toda */
+  #map { position: absolute; inset: 0; width: 100%; height: 100%; }
 }
 </style>
 </head>
@@ -262,12 +322,16 @@ body {
 
 <div id="main">
   <aside id="sidebar">
+    <div id="mobile-close-btn">
+      <span>Regiões e Cidades</span>
+      <button onclick="toggleSb()">✕ Ver Mapa</button>
+    </div>
     <div id="search-box">
       <input type="text" id="search" placeholder="🔍 Buscar cidade, irmão ou CAE..." oninput="doSearch(this.value)">
     </div>
     <div id="region-list"></div>
   </aside>
-  <div id="sb-toggle" onclick="toggleSb()">▶</div>
+  <div id="sb-toggle" onclick="toggleSb()" title="Mostrar/ocultar painel">☰</div>
   <div id="map"></div>
   <div id="legend">
     <div class="leg-title">Regiões <span style="font-weight:normal;opacity:0.6">clique para filtrar</span></div>
@@ -298,7 +362,18 @@ const db = firebase.firestore();
 // ════════════════════════════════════════════
 let regioes = [], cidades = [];
 let markers = {}, hulls = {};
-let activeRegiao = null, sbOpen = true;
+let activeRegiao = null;
+const isMobile = () => window.innerWidth <= 700;
+let sbOpen = !isMobile(); // fechado por padrão no mobile
+
+// ── Aplicar estado inicial do sidebar ──
+(function() {
+  if (isMobile()) {
+    document.getElementById('sidebar').classList.add('closed');
+    document.getElementById('mobile-close-btn').style.display = 'flex';
+    document.getElementById('sb-toggle').textContent = '☰ Lista';
+  }
+})();
 
 // ════════════════════════════════════════════
 //  MAPA LEAFLET
@@ -584,6 +659,8 @@ function selectRegiao(num, scroll = false) {
     const bounds = L.latLngBounds(citiesInReg.map(c => [c.lat, c.lng]));
     map.fitBounds(bounds.pad(0.35), { maxZoom: 9, animate: true });
   }
+  // No mobile: fecha o sidebar para revelar o mapa filtrado
+  if (isMobile() && sbOpen) toggleSb();
 }
 
 function clearFilter() {
@@ -598,6 +675,8 @@ function clearFilter() {
 function focusCity(id) {
   const c = cidades.find(x => x.id === id);
   if (!c) return;
+  // No mobile: fecha o sidebar para revelar o mapa
+  if (isMobile() && sbOpen) toggleSb();
   map.flyTo([c.lat, c.lng], 11, { duration: 1.0 });
   setTimeout(() => markers[id] && markers[id].openPopup(), 1100);
 }
@@ -630,7 +709,12 @@ function toggleSb() {
   const sb = document.getElementById('sidebar');
   const btn = document.getElementById('sb-toggle');
   sb.classList.toggle('closed', !sbOpen);
-  btn.textContent = sbOpen ? '◀' : '▶';
+  if (isMobile()) {
+    btn.textContent = sbOpen ? '✕ Fechar' : '☰ Lista';
+    document.getElementById('mobile-close-btn').style.display = sbOpen ? 'flex' : 'none';
+  } else {
+    btn.textContent = sbOpen ? '◀' : '▶';
+  }
   setTimeout(() => map.invalidateSize(), 310);
 }
 
