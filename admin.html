@@ -731,34 +731,109 @@ function closeConfirm() {
 }
 
 
+
 // ══════════════════════════════════════════════════════════════════
-//  MÓDULO DE RELATÓRIO PDF
+//  MÓDULO DE RELATÓRIO PDF — v2
+//  Distâncias reais por estrada (OSRM) · População (Censo 2022)
+//  Layout full-width · Matriz de distâncias · Densidade territorial
 // ══════════════════════════════════════════════════════════════════
 
-// ── Distância Haversine (km) ──
-function haversine(lat1, lng1, lat2, lng2) {
-  const R = 6371, r = Math.PI/180;
-  const dLat = (lat2-lat1)*r, dLng = (lng2-lng1)*r;
-  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*r)*Math.cos(lat2*r)*Math.sin(dLng/2)**2;
+// ── Tabela de população — Censo IBGE 2022 ──
+const POP = {
+  'Patos de Minas':152504, 'Pirapora':59956, 'Três Marias':30027,
+  'Uberlândia':706597, 'Unaí':88145, 'Montes Claros':414974,
+  'Araxá':116523, 'Frutal':60196, 'Brasília de Minas':36962,
+  'Varzelândia':17158, 'Januária':67613, 'Manga':24957,
+  'Janaúba':76444, 'Monte Azul':32856, 'Salinas':44968,
+  'Rio Pardo de Minas':29029, 'Almenara':41047, 'Pedra Azul':23916,
+  'Grão Mogol':16972, 'Formiga':68174, 'Guaxupé':51622,
+  'Poços de Caldas':162096, 'Pouso Alegre':153001, 'Extrema':40263,
+  'Varginha':133816, 'Lavras':100940, 'Juiz de Fora':577467,
+  'Caxambu':22024, 'Leopoldina':50594, 'Belo Horizonte':2315560,
+  'Betim':433705, 'Ipatinga':255599, 'Ouro Preto':76022,
+  'Ponte Nova':58064, 'Minas Novas':31056, 'Teófilo Otoni':137184,
+  'Governador Valadares':279942, 'Manhuaçu':83394,
+  'Guanhães':33091, 'Diamantina':52068,
+};
+function popStr(nome) {
+  const p = POP[nome];
+  if (!p) return '—';
+  return p.toLocaleString('pt-BR');
+}
+function popTotal(cities) {
+  return cities.reduce((s,c)=>s+(POP[c.nome]||0),0);
+}
+
+// ── Haversine ──
+function haversine(lat1,lng1,lat2,lng2){
+  const R=6371,r=Math.PI/180,dLa=(lat2-lat1)*r,dLn=(lng2-lng1)*r;
+  const a=Math.sin(dLa/2)**2+Math.cos(lat1*r)*Math.cos(lat2*r)*Math.sin(dLn/2)**2;
   return 2*R*Math.asin(Math.sqrt(a));
 }
-function alcanceRegiao(cities) {
-  if (cities.length<=1) return 0;
-  let max=0, c1=null, c2=null;
-  for (let i=0;i<cities.length;i++)
-    for (let j=i+1;j<cities.length;j++) {
-      const d=haversine(cities[i].lat,cities[i].lng,cities[j].lat,cities[j].lng);
-      if(d>max){max=d;c1=cities[i];c2=cities[j];}
-    }
-  return {km:Math.round(max), c1, c2};
+
+// ── OSRM: distâncias reais por estrada (matrix endpoint) ──
+async function getOSRMMatrix(cities) {
+  if (cities.length <= 1) return [[0]];
+  const coords = cities.map(c=>`${c.lng},${c.lat}`).join(';');
+  try {
+    const res = await fetch(
+      `https://router.project-osrm.org/table/v1/driving/${coords}?annotations=distance`,
+      {signal: AbortSignal.timeout(12000)}
+    );
+    const data = await res.json();
+    if (data.code !== 'Ok') throw new Error('OSRM error');
+    // distances em metros → km
+    return data.distances.map(row => row.map(d => Math.round((d||0)/1000)));
+  } catch(e) {
+    // Fallback: haversine
+    console.warn('OSRM falhou, usando haversine:', e.message);
+    return cities.map((a,i) =>
+      cities.map((b,j) => i===j ? 0 : Math.round(haversine(a.lat,a.lng,b.lat,b.lng)))
+    );
+  }
 }
 
-// ── Hex → RGB ──
-function hexRgb(hex) {
-  return { r:parseInt(hex.slice(1,3),16), g:parseInt(hex.slice(3,5),16), b:parseInt(hex.slice(5,7),16) };
+// ── TSP nearest-neighbor: rota mínima para visitar todas as cidades ──
+function tspRoute(matrix) {
+  const n = matrix.length;
+  if (n <= 1) return { total:0, route:[0] };
+  const visited = new Set([0]), route = [0];
+  let total = 0;
+  while (visited.size < n) {
+    const cur = route[route.length-1];
+    let near=-1, minD=Infinity;
+    for (let i=0;i<n;i++) if(!visited.has(i)&&matrix[cur][i]<minD){minD=matrix[cur][i];near=i;}
+    route.push(near); visited.add(near); total+=minD;
+  }
+  total += matrix[route[route.length-1]][0]; // retorno
+  return { total, route };
 }
 
-// ── Convex hull simplificado (para canvas) ──
+// ── Coordenadores únicos na região ──
+function uniqueCoords(cities) {
+  const s = new Set();
+  cities.forEach(c=>{
+    if(c.coordenadorLocal) s.add(c.coordenadorLocal);
+    if(c.coordenadorEstadual) s.add(c.coordenadorEstadual);
+  });
+  return s.size;
+}
+
+// ── Região vizinha mais próxima ──
+function nearestNeighborReg(regNum, byReg) {
+  const mine = byReg[regNum]||[];
+  let minD=Infinity, nearNum=null;
+  Object.entries(byReg).forEach(([num,others])=>{
+    if(parseInt(num)===regNum||!others.length) return;
+    mine.forEach(a=>others.forEach(b=>{
+      const d=haversine(a.lat,a.lng,b.lat,b.lng);
+      if(d<minD){minD=d;nearNum=parseInt(num);}
+    }));
+  });
+  return nearNum ? {num:nearNum, dist:Math.round(minD)} : null;
+}
+
+// ── Área estimada do território (hull) em km² ──
 function crossC(O,A,B){return(A[0]-O[0])*(B[1]-O[1])-(A[1]-O[1])*(B[0]-O[0]);}
 function hullC(pts){
   if(pts.length<3)return pts;
@@ -768,24 +843,41 @@ function hullC(pts){
   for(const p of s.slice().reverse()){while(hi.length>=2&&crossC(hi[hi.length-2],hi[hi.length-1],p)<=0)hi.pop();hi.push(p);}
   hi.pop();lo.pop();return lo.concat(hi);
 }
-
-// ── Projeção lat/lng → pixel (norte no topo) ──
-function makeProj(cities, w, h, pad=1.2) {
-  const lats=cities.map(c=>c.lat||c[0]), lngs=cities.map(c=>c.lng||c[1]);
-  let minLat=Math.min(...lats)-pad, maxLat=Math.max(...lats)+pad;
-  let minLng=Math.min(...lngs)-pad, maxLng=Math.max(...lngs)+pad;
-  const ar=w/h, spLat=maxLat-minLat, spLng=maxLng-minLng;
-  if(spLng/spLat<ar){const d=spLat*ar-spLng;minLng-=d/2;maxLng+=d/2;}
-  else{const d=spLng/ar-spLat;minLat-=d/2;maxLat+=d/2;}
-  return (lat,lng)=>({x:((lng-minLng)/(maxLng-minLng))*w, y:((maxLat-lat)/(maxLat-minLat))*h});
+function hullAreaKm2(cities) {
+  if(cities.length<3) return null;
+  const cx=cities.reduce((s,c)=>s+c.lat,0)/cities.length;
+  const cy=cities.reduce((s,c)=>s+c.lng,0)/cities.length;
+  const BUF=0.72;
+  const exp=cities.map(c=>{const dx=c.lat-cx,dy=c.lng-cy,d=Math.sqrt(dx*dx+dy*dy)||0.001;return[c.lat+(dx/d)*BUF,c.lng+(dy/d)*BUF];});
+  const hull=hullC(exp); if(hull.length<3) return null;
+  let area=0;
+  const n=hull.length;
+  for(let i=0;i<n;i++){const j=(i+1)%n;area+=hull[i][1]*hull[j][0]-hull[j][1]*hull[i][0];}
+  const deg2=Math.abs(area)/2;
+  const avgLat=hull.reduce((s,p)=>s+p[0],0)/n;
+  return Math.round(deg2*111.0*111.0*Math.cos(avgLat*Math.PI/180));
 }
 
-// ── Desenha GeoJSON (outline de MG) no canvas ──
-function drawGeoJSONCanvas(ctx, gj, proj, stroke, fill, alpha=1) {
-  if(!gj) return;
+// ── Hex → RGB ──
+function hexRgb(hex){return{r:parseInt(hex.slice(1,3),16),g:parseInt(hex.slice(3,5),16),b:parseInt(hex.slice(5,7),16)};}
+
+// ── Projeção lat/lng → pixel ──
+function makeProj(cities,w,h,pad=1.2){
+  const lats=cities.map(c=>c.lat||c[0]),lngs=cities.map(c=>c.lng||c[1]);
+  let minLat=Math.min(...lats)-pad,maxLat=Math.max(...lats)+pad;
+  let minLng=Math.min(...lngs)-pad,maxLng=Math.max(...lngs)+pad;
+  const ar=w/h,spLat=maxLat-minLat,spLng=maxLng-minLng;
+  if(spLng/spLat<ar){const d=spLat*ar-spLng;minLng-=d/2;maxLng+=d/2;}
+  else{const d=spLng/ar-spLat;minLat-=d/2;maxLat+=d/2;}
+  return(lat,lng)=>({x:((lng-minLng)/(maxLng-minLng))*w,y:((maxLat-lat)/(maxLat-minLat))*h});
+}
+
+// ── Desenha GeoJSON no canvas ──
+function drawGeoJSONCanvas(ctx,gj,proj,stroke,fill,alpha=1){
+  if(!gj)return;
   const geom=gj.features?gj.features[0].geometry:(gj.geometry||gj);
   ctx.globalAlpha=alpha;
-  function drawRing(ring) {
+  function drawRing(ring){
     ctx.beginPath();
     ring.forEach(([lng,lat],i)=>{const{x,y}=proj(lat,lng);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);});
     ctx.closePath();
@@ -796,69 +888,67 @@ function drawGeoJSONCanvas(ctx, gj, proj, stroke, fill, alpha=1) {
   ctx.globalAlpha=1;
 }
 
-// ── Desenha hull de uma região no canvas ──
-function drawHullC(ctx, cities, cor, proj, fillOpacity=0.18) {
-  if(!cities.length) return;
+// ── Desenha hull de região no canvas ──
+function drawHullC(ctx,cities,cor,proj,fillOp=0.18){
+  if(!cities.length)return;
   const cx=cities.reduce((s,c)=>s+c.lat,0)/cities.length;
   const cy=cities.reduce((s,c)=>s+c.lng,0)/cities.length;
-  const expPts=cities.map(c=>{const dx=c.lat-cx,dy=c.lng-cy,d=Math.sqrt(dx*dx+dy*dy)||0.001;return[c.lat+(dx/d)*0.7,c.lng+(dy/d)*0.7];});
-  const hull=hullC(expPts);
-  if(hull.length<2) return;
+  const BUF=0.72;
+  const exp=cities.map(c=>{const dx=c.lat-cx,dy=c.lng-cy,d=Math.sqrt(dx*dx+dy*dy)||0.001;return[c.lat+(dx/d)*BUF,c.lng+(dy/d)*BUF];});
+  const hull=hullC(exp);if(hull.length<2)return;
   const{r,g,b}=hexRgb(cor);
   ctx.beginPath();
   hull.forEach(([lat,lng],i)=>{const{x,y}=proj(lat,lng);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);});
   ctx.closePath();
-  ctx.fillStyle=`rgba(${r},${g},${b},${fillOpacity})`;ctx.fill();
+  ctx.fillStyle=`rgba(${r},${g},${b},${fillOp})`;ctx.fill();
   ctx.strokeStyle=cor;ctx.lineWidth=1.5;ctx.stroke();
 }
 
-// ── Canvas do mapa de uma região ──
-function buildRegionCanvas(regiao, citiesReg, allCities, mgData, W=660, H=400) {
+// ── Canvas do mapa de uma região (full-width) ──
+function buildRegionCanvas(regiao,citiesReg,allCities,mgData,W=1100,H=600){
   const canvas=document.createElement('canvas');
   canvas.width=W;canvas.height=H;
   const ctx=canvas.getContext('2d');
-  const proj=makeProj(citiesReg.length?citiesReg:[{lat:-18.5,lng:-44.8}], W, H, 1.8);
+  const proj=makeProj(citiesReg.length?citiesReg:[{lat:-18.5,lng:-44.8}],W,H,1.8);
   ctx.fillStyle='#F7F9FC';ctx.fillRect(0,0,W,H);
-  if(mgData) drawGeoJSONCanvas(ctx, mgData, proj,'#033D60','#EBF4FA',0.45);
+  if(mgData) drawGeoJSONCanvas(ctx,mgData,proj,'#033D60','#EBF4FA',0.45);
   const regMap={};regioes.forEach(r=>regMap[r.numero]=r);
   const byReg={};allCities.forEach(c=>{if(!byReg[c.regiaoNumero])byReg[c.regiaoNumero]=[];byReg[c.regiaoNumero].push(c);});
-  // Outras regiões (dimmed)
   Object.entries(byReg).forEach(([num,list])=>{
-    if(parseInt(num)===regiao.numero) return;
-    const r=regMap[parseInt(num)];if(!r) return;
+    if(parseInt(num)===regiao.numero)return;
+    const r=regMap[parseInt(num)];if(!r)return;
     drawHullC(ctx,list,r.cor,proj,0.05);
   });
-  // Região alvo
   drawHullC(ctx,citiesReg,regiao.cor,proj,0.22);
-  // Marcadores
   allCities.forEach(c=>{
     const{x,y}=proj(c.lat,c.lng);
     const isA=c.regiaoNumero===regiao.numero;
     const rc=regMap[c.regiaoNumero];
-    ctx.beginPath();ctx.arc(x,y,isA?7:3.5,0,Math.PI*2);
-    ctx.fillStyle=isA?(rc?rc.cor:'#666'):'rgba(150,150,150,0.5)';ctx.fill();
+    ctx.beginPath();ctx.arc(x,y,isA?8:3.5,0,Math.PI*2);
+    ctx.fillStyle=isA?(rc?rc.cor:'#666'):'rgba(140,140,140,0.45)';ctx.fill();
     ctx.strokeStyle='white';ctx.lineWidth=isA?2:1;ctx.stroke();
   });
-  // Labels das cidades da região
-  ctx.font='bold 12px Verdana,sans-serif';
+  // Labels
+  ctx.font='bold 13px Verdana,sans-serif';
   citiesReg.forEach(c=>{
     const{x,y}=proj(c.lat,c.lng);
     const tw=ctx.measureText(c.nome).width;
-    ctx.fillStyle='rgba(255,255,255,0.88)';
-    ctx.beginPath();ctx.roundRect(x+9,y-10,tw+6,15,3);ctx.fill();
-    ctx.fillStyle='#1a1a1a';ctx.fillText(c.nome,x+12,y+2);
+    ctx.fillStyle='rgba(255,255,255,0.90)';
+    ctx.fillRect(x+10,y-11,tw+8,17);
+    ctx.strokeStyle='rgba(0,0,0,0.08)';ctx.lineWidth=0.5;
+    ctx.strokeRect(x+10,y-11,tw+8,17);
+    ctx.fillStyle='#1a1a1a';ctx.fillText(c.nome,x+14,y+3);
   });
-  // Borda
   ctx.strokeStyle='#DDE3E9';ctx.lineWidth=1;ctx.strokeRect(0,0,W,H);
   return canvas;
 }
 
-// ── Canvas do mapa macro (MG completo) ──
-function buildMacroCanvas(allCities, mgData, W=800, H=620) {
+// ── Canvas macro (MG completo) ──
+function buildMacroCanvas(allCities,mgData,W=900,H=660){
   const canvas=document.createElement('canvas');
   canvas.width=W;canvas.height=H;
   const ctx=canvas.getContext('2d');
-  const proj=makeProj(allCities.length?allCities:[{lat:-18.5,lng:-44.8}], W, H, 1.5);
+  const proj=makeProj(allCities.length?allCities:[{lat:-18.5,lng:-44.8}],W,H,1.5);
   ctx.fillStyle='#F7F9FC';ctx.fillRect(0,0,W,H);
   if(mgData) drawGeoJSONCanvas(ctx,mgData,proj,'#033D60','#EBF4FA',0.4);
   const regMap={};regioes.forEach(r=>regMap[r.numero]=r);
@@ -870,7 +960,7 @@ function buildMacroCanvas(allCities, mgData, W=800, H=620) {
   allCities.forEach(c=>{
     const{x,y}=proj(c.lat,c.lng);
     const rc=regMap[c.regiaoNumero];
-    ctx.beginPath();ctx.arc(x,y,5.5,0,Math.PI*2);
+    ctx.beginPath();ctx.arc(x,y,6,0,Math.PI*2);
     ctx.fillStyle=rc?rc.cor:'#666';ctx.fill();
     ctx.strokeStyle='white';ctx.lineWidth=1.5;ctx.stroke();
   });
@@ -878,173 +968,297 @@ function buildMacroCanvas(allCities, mgData, W=800, H=620) {
   return canvas;
 }
 
-// ── Cabeçalho de página interna ──
-function pdfHeader(doc, texto, PW) {
-  doc.setFillColor(3,61,96);doc.rect(0,0,PW,13,'F');
-  doc.setFillColor(201,123,58);doc.rect(0,0,3,13,'F');
-  doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(255,255,255);
-  doc.text('DARPE Estadual MG', 7, 9);
-  doc.setFont('helvetica','normal');doc.setTextColor(184,212,232);
-  doc.text(texto, PW-14, 9, {align:'right'});
-}
-
-// ── Adiciona página por região ──
-async function addRegiaoPage(doc, reg, citiesReg, allCities, mgData, PW) {
+// ── Adiciona página de região com layout novo ──
+async function addRegiaoPage(doc,reg,citiesReg,allCities,mgData,distMatrix,PW,PH){
   const{r,g,b}=hexRgb(reg.cor);
-  // Header colorido
-  doc.setFillColor(r,g,b);doc.rect(0,0,PW,14,'F');
-  doc.setFillColor(3,61,96);doc.rect(0,0,3,14,'F');
-  doc.setFont('helvetica','bold');doc.setFontSize(13);doc.setTextColor(255,255,255);
-  doc.text(`Região ${reg.numero}`, 8, 10.5);
-  doc.setFontSize(8);doc.setFont('helvetica','normal');
-  doc.text('DARPE Estadual MG', PW-14, 10, {align:'right'});
-  // CAE
-  doc.setFontSize(10);doc.setFont('helvetica','bold');doc.setTextColor(3,61,96);
-  doc.text('Ancião CAE', 14, 24);
-  doc.setFont('helvetica','normal');doc.setFontSize(12);doc.setTextColor(20,20,20);
-  doc.text(reg.cae, 14, 32);
-  // Stats
-  const alc=alcanceRegiao(citiesReg);
-  doc.setFontSize(8.5);doc.setFont('helvetica','normal');doc.setTextColor(130,130,130);
-  const statsText = `${citiesReg.length} cidade${citiesReg.length!==1?'s':''}`
-    + (alc.km>0 ? `   ·   Alcance territorial: ${alc.km} km` : '');
-  doc.text(statsText, 14, 40);
-  // ── Layout: mapa esquerda, tabela direita ──
-  const mapW=96, mapH=70, mapX=14, mapY=46;
-  const regionCanvas=buildRegionCanvas(reg, citiesReg, allCities, mgData, 720, 525);
-  doc.addImage(regionCanvas.toDataURL('image/png'),'PNG',mapX,mapY,mapW,mapH);
-  doc.setDrawColor(220,226,233);doc.setLineWidth(0.3);doc.rect(mapX,mapY,mapW,mapH);
-  // Tabela de cidades (coluna direita)
-  doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(3,61,96);
-  doc.text('Cidades e Coordenadores', 118, 54);
-  doc.autoTable({
-    startY:57, margin:{left:116,right:14}, tableWidth:80,
-    head:[['Cidade','Coord. Local','Coord. Estadual']],
-    body:citiesReg.map(c=>[c.nome, c.coordenadorLocal||'—', c.coordenadorEstadual||'—']),
-    styles:{fontSize:7,font:'helvetica',cellPadding:2.5,overflow:'linebreak'},
-    headStyles:{fillColor:[r,g,b],textColor:255,fontStyle:'bold',fontSize:7.5},
-    alternateRowStyles:{fillColor:[235,244,250]},
-    columnStyles:{0:{cellWidth:28},1:{cellWidth:26},2:{cellWidth:26}},
+  const M=14; // margin
+
+  // ── Header colorido ──
+  doc.setFillColor(r,g,b);doc.rect(0,0,PW,16,'F');
+  doc.setFillColor(3,61,96);doc.rect(0,0,3,16,'F');
+  doc.setFont('helvetica','bold');doc.setFontSize(14);doc.setTextColor(255,255,255);
+  doc.text(`Região ${reg.numero}`,9,11.5);
+  doc.setFontSize(8.5);doc.setFont('helvetica','normal');doc.setTextColor(255,255,255);
+  doc.text('DARPE Estadual MG',PW-M,11.5,{align:'right'});
+
+  // ── CAE ──
+  doc.setFont('helvetica','bold');doc.setFontSize(9.5);doc.setTextColor(3,61,96);
+  doc.text('Ancião CAE',M,25);
+  doc.setFont('helvetica','normal');doc.setFontSize(13);doc.setTextColor(20,20,20);
+  doc.text(reg.cae,M,33);
+
+  // ── Stats bar ──
+  const area=hullAreaKm2(citiesReg);
+  const ucoords=uniqueCoords(citiesReg);
+  const neighbor=nearestNeighborReg(reg.numero, (() => {
+    const br={};regioes.forEach(r2=>br[r2.numero]=[]);
+    cidades.forEach(c=>{if(br[c.regiaoNumero]!==undefined)br[c.regiaoNumero].push(c);});
+    return br;
+  })());
+  const totalPop=popTotal(citiesReg);
+
+  const stats=[
+    `${citiesReg.length} cidade${citiesReg.length!==1?'s':''}`,
+    `Pop. total: ${totalPop>0?totalPop.toLocaleString('pt-BR'):'—'}`,
+    `${ucoords} coord. único${ucoords!==1?'s':''}`,
+    area?`Área: ~${area.toLocaleString('pt-BR')} km²`:'',
+    neighbor?`Região vizinha: ${neighbor.num}`:'',
+  ].filter(Boolean);
+
+  doc.setFontSize(8);doc.setTextColor(100,100,100);
+  let sx=M;
+  stats.forEach((st,i)=>{
+    if(i>0){doc.setTextColor(210,210,210);doc.text('|',sx,40.5);sx+=5;}
+    doc.setTextColor(80,80,80);doc.text(st,sx,40.5);
+    sx+=doc.getStringUnitWidth(st)*8/doc.internal.scaleFactor+6;
   });
-  // Linha separadora
-  const sepY=mapY+mapH+8;
-  doc.setDrawColor(220,226,233);doc.setLineWidth(0.3);doc.line(14,sepY,PW-14,sepY);
-  // Alcance detalhado
-  if(alc.km>0 && alc.c1 && alc.c2) {
-    doc.setFontSize(8);doc.setFont('helvetica','normal');doc.setTextColor(130,130,130);
-    doc.text(`Maior distância: ${alc.c1.nome} → ${alc.c2.nome} (${alc.km} km em linha reta)`, 14, sepY+8);
+
+  // ── Linha separadora ──
+  doc.setDrawColor(220,226,233);doc.setLineWidth(0.3);doc.line(M,43,PW-M,43);
+
+  // ── Mapa full-width ──
+  const mapY=45, mapH=85, mapW=PW-2*M;
+  const regCanvas=buildRegionCanvas(reg,citiesReg,allCities,mgData,1100,600);
+  doc.addImage(regCanvas.toDataURL('image/png'),'PNG',M,mapY,mapW,mapH);
+  doc.setDrawColor(220,226,233);doc.setLineWidth(0.3);doc.rect(M,mapY,mapW,mapH);
+  doc.setFont('helvetica','italic');doc.setFontSize(6.5);doc.setTextColor(170,170,170);
+  doc.text('Visão micro da região com contexto estadual',M,mapY+mapH+4);
+
+  // ── Tabela de cidades com população ──
+  let ty=mapY+mapH+8;
+  doc.setFont('helvetica','bold');doc.setFontSize(9.5);doc.setTextColor(3,61,96);
+  doc.text('Cidades',M,ty+5);
+  doc.autoTable({
+    startY:ty+8,margin:{left:M,right:M},
+    head:[['Cidade','Pop. (Censo 2022)','Coord. Local','Coord. Estadual']],
+    body:citiesReg.map(c=>[c.nome,popStr(c.nome),c.coordenadorLocal||'—',c.coordenadorEstadual||'—']),
+    styles:{fontSize:8,font:'helvetica',cellPadding:3},
+    headStyles:{fillColor:[r,g,b],textColor:255,fontStyle:'bold',fontSize:8.5},
+    alternateRowStyles:{fillColor:[235,244,250]},
+    columnStyles:{0:{cellWidth:40},1:{cellWidth:35,halign:'right'},2:{cellWidth:48},3:{cellWidth:48}},
+  });
+
+  // ── Matriz de distâncias por estrada ──
+  if(distMatrix && citiesReg.length > 1){
+    const matY = doc.lastAutoTable.finalY+8;
+    doc.setFont('helvetica','bold');doc.setFontSize(9.5);doc.setTextColor(3,61,96);
+    doc.text('Distâncias por estrada (km)',M,matY+5);
+
+    const names=citiesReg.map(c=>c.nome.length>12?c.nome.substring(0,11)+'…':c.nome);
+    const head=[['De / Para',...names]];
+    const body=citiesReg.map((c,i)=>[c.nome,...distMatrix[i].map((d,j)=>i===j?'—':d.toString())]);
+    const cw=Math.min(26, (PW-2*M-36)/(citiesReg.length));
+
+    doc.autoTable({
+      startY:matY+8,margin:{left:M,right:M},
+      head:head, body:body,
+      styles:{fontSize:7.5,font:'helvetica',cellPadding:2.5,halign:'center'},
+      headStyles:{fillColor:[3,61,96],textColor:255,fontStyle:'bold',fontSize:7.5},
+      alternateRowStyles:{fillColor:[235,244,250]},
+      columnStyles:{0:{cellWidth:36,halign:'left',fontStyle:'bold',textColor:[r,g,b]}},
+      didParseCell(d){
+        if(d.section==='body'&&d.column.index>0){
+          const val=parseInt(d.cell.raw);
+          if(!isNaN(val)&&val>0){
+            const mx=Math.max(...distMatrix.flat().filter(x=>x>0));
+            const pct=val/mx;
+            d.cell.styles.fillColor=pct>0.7?[255,235,235]:pct>0.4?[255,248,220]:[235,244,250];
+          }
+        }
+      },
+    });
+
+    // TSP route total
+    const tsp=tspRoute(distMatrix);
+    const finalY=doc.lastAutoTable.finalY+5;
+    doc.setFillColor(235,244,250);
+    doc.rect(M,finalY,PW-2*M,16,'F');
+    doc.setFont('helvetica','bold');doc.setFontSize(8.5);doc.setTextColor(3,61,96);
+    doc.text('Rota estimada para visitar todas as cidades e retornar:',M+4,finalY+7);
+    doc.setTextColor(201,123,58);doc.setFontSize(11);
+    doc.text(`~${tsp.total.toLocaleString('pt-BR')} km`,PW-M-4,finalY+10,{align:'right'});
+    doc.setFont('helvetica','normal');doc.setFontSize(6.5);doc.setTextColor(130,130,130);
+    doc.text('Distâncias via OSRM (OpenStreetMap). Rota calculada por algoritmo de vizinho mais próximo.',M+4,finalY+13);
   }
-  // Nota de visão micro
-  doc.setFontSize(8);doc.setFont('helvetica','italic');doc.setTextColor(160,160,160);
-  doc.text('Mapa de detalhe: visão micro da região com contexto estadual.', 14, sepY+16);
 }
 
 // ── Gerar relatório macro ou completo ──
 async function gerarRelatorio(tipo) {
-  setRelProgress(true);
+  setRelProgress(true,'Iniciando...');
   try {
     if(!regioes.length) await loadAll();
+
+    // 1. Contorno de MG
+    setRelProgress(true,'Baixando contorno de Minas Gerais...');
     let mgData=null;
     try{const rs=await fetch('https://servicodados.ibge.gov.br/api/v3/malhas/estados/31?formato=application/vnd.geo+json');mgData=await rs.json();}catch(e){}
-    const{jsPDF}=window.jspdf;
-    const doc=new jsPDF('p','mm','a4');
-    const PW=210, PH=297;
+
+    // 2. Agrupar cidades por região
     const byReg={};regioes.forEach(r=>byReg[r.numero]=[]);
     cidades.forEach(c=>{if(byReg[c.regiaoNumero]!==undefined)byReg[c.regiaoNumero].push(c);});
+
+    // 3. Calcular distâncias por estrada para cada região
+    const distMatrices={};
+    if(tipo==='completo'){
+      for(const reg of regioes){
+        const list=byReg[reg.numero]||[];
+        if(list.length>1){
+          setRelProgress(true,`Calculando distâncias... Região ${reg.numero} de ${regioes.length}`);
+          distMatrices[reg.numero]=await getOSRMMatrix(list);
+        }
+      }
+    }
+
+    setRelProgress(true,'Montando PDF...');
+    const{jsPDF}=window.jspdf;
+    const doc=new jsPDF('p','mm','a4');
+    const PW=210,PH=297,M=14;
+
     // ── CAPA ──
     doc.setFillColor(3,61,96);doc.rect(0,0,PW,PH,'F');
     doc.setFillColor(201,123,58);doc.rect(0,0,3,PH,'F');
     doc.setFillColor(201,123,58);doc.rect(0,PH-18,PW,18,'F');
-    doc.setFillColor(13,92,140);
-    for(let row=0;row<9;row++)for(let col=0;col<9;col++){doc.setFillColor(10,74,112);doc.circle(PW-50+col*7,18+row*7,1.2,'F');}
-    doc.setFillColor(255,255,255);doc.roundRect(14,14,22,22,3,'F');
-    doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(3,61,96);
-    doc.text('CCB\nMG',25,23,{align:'center'});
-    doc.setFontSize(30);doc.setTextColor(255,255,255);doc.text('DARPE ESTADUAL',14,70);
-    doc.setFontSize(18);doc.setTextColor(201,123,58);doc.text('MINAS GERAIS',14,84);
-    doc.setDrawColor(13,92,140);doc.setLineWidth(0.5);doc.line(14,90,PW-14,90);
+    // Pontos decorativos
+    for(let row=0;row<9;row++)for(let col=0;col<9;col++){
+      doc.setFillColor(10,74,112);
+      const px=PW-52+col*7, py=12+row*7;
+      doc.circle(px,py,1.2,'F');
+    }
+    // Logo
+    doc.setFillColor(255,255,255);doc.rect(14,14,22,22,'F');
+    doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(3,61,96);
+    doc.text('CCB',25,23,{align:'center'});
+    doc.setFontSize(7);doc.text('DARPE',25,28,{align:'center'});
+    // Títulos
+    doc.setFontSize(30);doc.setFont('helvetica','bold');doc.setTextColor(255,255,255);
+    doc.text('DARPE ESTADUAL',M,70);
+    doc.setFontSize(18);doc.setTextColor(201,123,58);
+    doc.text('MINAS GERAIS',M,84);
+    doc.setDrawColor(13,92,140);doc.setLineWidth(0.5);doc.line(M,90,PW-M,90);
     doc.setFont('helvetica','normal');doc.setFontSize(11);doc.setTextColor(184,212,232);
     const tipoLabel=tipo==='macro'?'Visão Macro Estadual':'Relatório Completo de Regiões';
-    doc.text(tipoLabel,14,100);
+    doc.text(tipoLabel,M,100);
     doc.setFontSize(8.5);doc.setTextColor(106,157,190);
     const dt=new Date();
-    doc.text(`Gerado em ${dt.toLocaleDateString('pt-BR')} às ${dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`,14,110);
-    doc.setFont('helvetica','bold');doc.setFontSize(13);doc.setTextColor(255,255,255);
-    doc.text(`${regioes.length} regiões`,14,145);
-    doc.text(`${cidades.length} cidades`,14,157);
-    doc.text(`${new Set(regioes.map(r=>r.cae)).size} membros CAE`,14,169);
+    doc.text(`Gerado em ${dt.toLocaleDateString('pt-BR')} às ${dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`,M,110);
+    // Stats
+    const totalPop=cidades.reduce((s,c)=>s+(POP[c.nome]||0),0);
+    doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(255,255,255);
+    doc.text(`${regioes.length} regiões`,M,145);
+    doc.text(`${cidades.length} cidades`,M,157);
+    doc.text(`${totalPop>0?totalPop.toLocaleString('pt-BR'):'—'} hab. (estimativa)`,M,169);
+    doc.setFontSize(8);doc.setFont('helvetica','normal');doc.setTextColor(184,212,232);
+    doc.text('Populações: Censo IBGE 2022. Distâncias: OSRM/OpenStreetMap.',M,PH-25);
+
     // ── PÁGINA MACRO ──
     doc.addPage();
-    pdfHeader(doc,'Visão Macro — Todas as Regiões', PW);
+    doc.setFillColor(3,61,96);doc.rect(0,0,PW,13,'F');
+    doc.setFillColor(201,123,58);doc.rect(0,0,3,13,'F');
+    doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(255,255,255);
+    doc.text('DARPE Estadual MG',7,9);
+    doc.setFont('helvetica','normal');doc.setTextColor(184,212,232);
+    doc.text('Visão Macro — Estado de Minas Gerais',PW-M,9,{align:'right'});
     doc.setFont('helvetica','bold');doc.setFontSize(13);doc.setTextColor(3,61,96);
-    doc.text('Visão Geral do Estado de Minas Gerais',14,24);
-    const macroCanvas=buildMacroCanvas(cidades,mgData,800,620);
-    const mW=PW-28, mH=mW*620/800;
-    doc.addImage(macroCanvas.toDataURL('image/png'),'PNG',14,29,mW,mH);
-    doc.setDrawColor(220,226,233);doc.setLineWidth(0.3);doc.rect(14,29,mW,mH);
+    doc.text('Visão Geral do Estado de Minas Gerais',M,24);
+
+    const macroC=buildMacroCanvas(cidades,mgData,900,660);
+    const mW=PW-2*M, mH=mW*660/900;
+    doc.addImage(macroC.toDataURL('image/png'),'PNG',M,29,mW,mH);
+    doc.setDrawColor(220,226,233);doc.setLineWidth(0.3);doc.rect(M,29,mW,mH);
+
     const tableY=29+mH+6;
     doc.autoTable({
-      startY:tableY, margin:{left:14,right:14},
-      head:[['Região','Ancião CAE','Cidades','Alcance']],
+      startY:tableY,margin:{left:M,right:M},
+      head:[['Região','Ancião CAE','Cidades','Pop. Total','Área est.','Alcance']],
       body:regioes.slice().sort((a,b)=>a.numero-b.numero).map(r=>{
         const list=byReg[r.numero]||[];
-        const a=alcanceRegiao(list);
-        return[`Região ${r.numero}`,r.cae,list.length,a.km>0?`${a.km} km`:'—'];
+        const area=hullAreaKm2(list);
+        const dm=distMatrices[r.numero];
+        let alcStr='—';
+        if(dm){
+          let mx=0,c1i=0,c2i=0;
+          dm.forEach((row,i)=>row.forEach((d,j)=>{if(d>mx){mx=d;c1i=i;c2i=j;}}));
+          alcStr=mx>0?`${mx} km`:'—';
+        } else if(list.length>=2){
+          let mx=0;
+          list.forEach((a,i)=>list.forEach((b,j)=>{if(j>i){const d=Math.round(haversine(a.lat,a.lng,b.lat,b.lng));if(d>mx)mx=d;}}));
+          alcStr=`~${mx} km`;
+        }
+        return[`Região ${r.numero}`,r.cae,list.length,
+          popTotal(list)>0?popTotal(list).toLocaleString('pt-BR'):'—',
+          area?`~${area.toLocaleString('pt-BR')} km²`:'—',
+          alcStr];
       }),
-      styles:{fontSize:7.5,font:'helvetica',cellPadding:3},
+      styles:{fontSize:7,font:'helvetica',cellPadding:2.5},
       headStyles:{fillColor:[3,61,96],textColor:255,fontStyle:'bold'},
       alternateRowStyles:{fillColor:[235,244,250]},
-      columnStyles:{0:{cellWidth:24},1:{cellWidth:102},2:{cellWidth:18,halign:'center'},3:{cellWidth:22,halign:'center'}},
+      columnStyles:{0:{cellWidth:22},1:{cellWidth:70},2:{cellWidth:16,halign:'center'},3:{cellWidth:28,halign:'right'},4:{cellWidth:24,halign:'right'},5:{cellWidth:20,halign:'center'}},
       didParseCell(d){if(d.section==='body'&&d.column.index===0){const n=parseInt(d.cell.raw.replace('Região ',''));const rr=regioes.find(r=>r.numero===n);if(rr){const{r,g,b}=hexRgb(rr.cor);d.cell.styles.textColor=[r,g,b];d.cell.styles.fontStyle='bold';}}},
     });
-    // ── PÁGINAS POR REGIÃO (só no completo) ──
-    if(tipo==='completo') {
+
+    // ── PÁGINAS POR REGIÃO ──
+    if(tipo==='completo'){
       for(const reg of regioes.slice().sort((a,b)=>a.numero-b.numero)){
+        setRelProgress(true,`Gerando página Região ${reg.numero}...`);
         doc.addPage();
-        await addRegiaoPage(doc,reg,byReg[reg.numero]||[],cidades,mgData,PW);
+        await addRegiaoPage(doc,reg,byReg[reg.numero]||[],cidades,mgData,distMatrices[reg.numero]||null,PW,PH);
       }
     }
-    // Rodapé em todas as páginas (exceto capa)
+
+    // ── Rodapé em todas as páginas ──
     const total=doc.getNumberOfPages();
     for(let i=2;i<=total;i++){
       doc.setPage(i);
       doc.setFillColor(3,61,96);doc.rect(0,PH-8,PW,8,'F');
       doc.setFont('helvetica','normal');doc.setFontSize(6.5);doc.setTextColor(106,157,190);
       doc.text('DARPE Estadual MG · 2026',PW/2,PH-3,{align:'center'});
-      doc.text(`${i-1} / ${total-1}`,PW-14,PH-3);
+      doc.text(`${i-1} / ${total-1}`,PW-M,PH-3);
     }
+
     doc.save(tipo==='macro'?'DARPE_MG_Macro.pdf':'DARPE_MG_Completo.pdf');
-  } catch(e){console.error(e);showToast('Erro ao gerar relatório: '+e.message,'err');}
+    showToast('Relatório gerado com sucesso!','ok');
+  } catch(e){console.error(e);showToast('Erro ao gerar: '+e.message,'err');}
   finally{setRelProgress(false);}
 }
 
-// ── Gerar relatório de região específica ──
-async function gerarRelatorioRegiao() {
+// ── Relatório de região específica ──
+async function gerarRelatorioRegiao(){
   const num=parseInt(document.getElementById('sel-reg-rel').value);
   if(!num){showToast('Selecione uma região.','err');return;}
-  setRelProgress(true);
-  try {
+  setRelProgress(true,'Iniciando...');
+  try{
     if(!regioes.length) await loadAll();
-    const reg=regioes.find(r=>r.numero===num);if(!reg) return;
+    const reg=regioes.find(r=>r.numero===num);if(!reg)return;
+    const byReg={};cidades.forEach(c=>{if(!byReg[c.regiaoNumero])byReg[c.regiaoNumero]=[];byReg[c.regiaoNumero].push(c);});
+    const citiesReg=byReg[reg.numero]||[];
+
     let mgData=null;
     try{const rs=await fetch('https://servicodados.ibge.gov.br/api/v3/malhas/estados/31?formato=application/vnd.geo+json');mgData=await rs.json();}catch(e){}
-    const byReg={};cidades.forEach(c=>{if(!byReg[c.regiaoNumero])byReg[c.regiaoNumero]=[];byReg[c.regiaoNumero].push(c);});
+
+    let dm=null;
+    if(citiesReg.length>1){
+      setRelProgress(true,'Calculando distâncias por estrada...');
+      dm=await getOSRMMatrix(citiesReg);
+    }
+
+    setRelProgress(true,'Gerando PDF...');
     const{jsPDF}=window.jspdf;
     const doc=new jsPDF('p','mm','a4');
     const PW=210,PH=297;
-    await addRegiaoPage(doc,reg,byReg[reg.numero]||[],cidades,mgData,PW);
+    await addRegiaoPage(doc,reg,citiesReg,cidades,mgData,dm,PW,PH);
     doc.setFillColor(3,61,96);doc.rect(0,PH-8,PW,8,'F');
     doc.setFont('helvetica','normal');doc.setFontSize(6.5);doc.setTextColor(106,157,190);
     doc.text('DARPE Estadual MG · 2026',PW/2,PH-3,{align:'center'});
     doc.save(`DARPE_MG_Regiao_${reg.numero}.pdf`);
-  } catch(e){console.error(e);showToast('Erro: '+e.message,'err');}
+    showToast('Relatório gerado!','ok');
+  }catch(e){console.error(e);showToast('Erro: '+e.message,'err');}
   finally{setRelProgress(false);}
 }
 
-// ── Popula select de regiões ──
-function populateRegSelect() {
+// ── Utilitários ──
+function populateRegSelect(){
   const sel=document.getElementById('sel-reg-rel');
-  if(!sel) return;
+  if(!sel)return;
   sel.innerHTML='<option value="">Selecione a região...</option>';
   regioes.slice().sort((a,b)=>a.numero-b.numero).forEach(r=>{
     const o=document.createElement('option');
@@ -1053,11 +1267,24 @@ function populateRegSelect() {
     sel.appendChild(o);
   });
 }
-
-function setRelProgress(show) {
+function setRelProgress(show,msg='Processando...'){
   const el=document.getElementById('rel-progress');
-  if(el) el.style.display=show?'flex':'none';
+  if(el){
+    el.style.display=show?'flex':'none';
+    const p=el.querySelector('p');
+    if(p&&msg)p.textContent=msg;
+  }
   document.querySelectorAll('.rel-btn').forEach(b=>b.disabled=show);
+}
+
+// ── Toast de notificação ──
+function showToast(msg, type='ok') {
+  const el=document.getElementById('toast');
+  if(!el) return;
+  el.textContent=msg;
+  el.className=type;
+  el.style.display='block';
+  setTimeout(()=>el.style.display='none',3500);
 }
 </script>
 </body>
