@@ -521,24 +521,40 @@ function capsule(p1, p2, buf) {
   return pts;
 }
 
+// Densifica o polígono: adiciona pontos intermediários em cada aresta
+// Isso limita o quanto o Chaikin pode cortar os cantos (corte ≤ 0.25 × step por iteração)
+function densify(pts, step = 0.38) {
+  const result = [];
+  const n = pts.length;
+  for (let i = 0; i < n; i++) {
+    const p0 = pts[i], p1 = pts[(i+1)%n];
+    result.push(p0);
+    const dx = p1[0]-p0[0], dy = p1[1]-p0[1];
+    const d = Math.sqrt(dx*dx+dy*dy);
+    const k = Math.ceil(d/step);
+    for (let j = 1; j < k; j++) {
+      const t = j/k;
+      result.push([p0[0]+t*dx, p0[1]+t*dy]);
+    }
+  }
+  return result;
+}
+
 function makeShape(cities) {
   const pts = cities.map(c => [c.lat, c.lng]);
-  if (pts.length === 1) return { type:'circle', c: pts[0], r: 80000 };
+  if (pts.length === 1) return { type:'circle', c: pts[0], r: 85000 };
 
-  const BUF = 0.72; // buffer em graus (~80km)
+  const BUF = 0.72;
 
   if (pts.length === 2) {
     return { type:'polygon', pts: capsule(pts[0], pts[1], BUF) };
   }
 
-  // CORREÇÃO PRINCIPAL:
-  // Expande CADA cidade individualmente antes de computar o hull.
-  // Isso garante que toda cidade tem seu próprio ponto expandido no polígono,
-  // ao contrário de antes, que só expandia os vértices do hull (cidades no
-  // interior do hull não tinham ponto próprio e podiam cair fora após Chaikin).
+  // Centróide
   const cx = pts.reduce((s,p)=>s+p[0],0)/pts.length;
   const cy = pts.reduce((s,p)=>s+p[1],0)/pts.length;
 
+  // Expande CADA cidade 0.72° para fora do centróide
   const expanded = pts.map(([lat, lng]) => {
     const dx = lat-cx, dy = lng-cy;
     const d = Math.sqrt(dx*dx+dy*dy) || 0.001;
@@ -546,8 +562,11 @@ function makeShape(cities) {
   });
 
   const hull = convexHull(expanded);
-  // Chaikin com 3 iterações — arredonda sem encolher demais
-  const smooth = chaikin(hull, 3);
+
+  // Densifica → limita o corte do Chaikin a ≈ 0.25 × 0.38° = ~0.095° por iteração
+  // 3 iterações = corte máximo ≈ 0.28°, muito menor que o buffer de 0.72°
+  const dense = densify(hull, 0.38);
+  const smooth = chaikin(dense, 3);
   return { type:'polygon', pts: smooth };
 }
 
