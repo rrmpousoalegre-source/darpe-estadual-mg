@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Seed — DARPE Estadual MG</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: Verdana, sans-serif; background: #f0f4f8; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+.card { background: white; border-radius: 10px; padding: 32px; max-width: 580px; width: 100%; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+.logo { width: 48px; height: 48px; background: #033D60; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 11px; margin: 0 auto 16px; line-height: 1.3; text-align: center; }
+h2 { text-align: center; color: #033D60; font-size: 15px; margin-bottom: 4px; }
+p.sub { text-align: center; font-size: 11px; color: #888; margin-bottom: 24px; }
+.warn { background: #fff3e0; border: 1px solid #ffcc80; border-radius: 6px; padding: 12px; font-size: 11px; color: #e65100; margin-bottom: 20px; }
+.summary { background: #f4f6f9; border-radius: 6px; padding: 14px; font-size: 11px; color: #444; margin-bottom: 20px; line-height: 1.8; }
+.summary b { color: #033D60; }
+button { width: 100%; padding: 12px; background: #033D60; color: white; border: none; border-radius: 6px; font-size: 13px; cursor: pointer; font-family: Verdana, sans-serif; }
+button:hover { background: #022a47; }
+button:disabled { background: #aaa; cursor: not-allowed; }
+#log { margin-top: 20px; background: #1a1a2e; border-radius: 6px; padding: 14px; font-family: monospace; font-size: 11px; max-height: 260px; overflow-y: auto; display: none; }
+.log-line { padding: 2px 0; }
+.log-ok { color: #69db7c; }
+.log-err { color: #ff6b6b; }
+.log-info { color: #74c0fc; }
+.log-head { color: #ffd43b; font-weight: bold; }
+#done-msg { display: none; text-align: center; margin-top: 16px; font-size: 12px; font-weight: bold; }
+#done-msg.ok { color: #1b7a3e; }
+#done-msg.err { color: #c62828; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">CCB<br>MG</div>
+  <h2>Seed de Dados — DARPE Estadual MG</h2>
+  <p class="sub">População inicial do Firebase com todas as regiões e cidades</p>
+
+  <div class="warn">⚠ Execute este seed <strong>uma única vez</strong> após criar o projeto Firebase. Executar novamente criará registros duplicados.</div>
+
+  <div class="summary">
+    <b>O que será inserido:</b><br>
+    ✓ <b>11 regiões</b> com ancião CAE e cor<br>
+    ✓ <b>42 cidades</b> com coordenadores e coordenadas geográficas<br><br>
+    <b>Fonte:</b> Apresentação DARPE Estadual 2026
+  </div>
+
+  <button id="btn-seed" onclick="runSeed()">▶ Executar Seed</button>
+  <div id="log"></div>
+  <div id="done-msg"></div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+<script>
+// ════════════════════════════════════════════
+//  FIREBASE CONFIG — cole aqui as suas chaves
+// ════════════════════════════════════════════
+const firebaseConfig = {
+  apiKey: "AIzaSyDvLEtfAFKakg9Lfi7qdQl3FxmJW4QvqfI",
+  authDomain: "darpe-estadual-mg.firebaseapp.com",
+  projectId: "darpe-estadual-mg",
+  storageBucket: "darpe-estadual-mg.firebasestorage.app",
+  messagingSenderId: "768789192963",
+  appId: "1:768789192963:web:bc758d4ea46fb3ff3bc936"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// ════════════════════════════════════════════
+//  DADOS: REGIÕES
+// ════════════════════════════════════════════
+const REGIOES = [
+  { numero: 1,  cae: 'Ir Paulo Lopes de Almeida',        cor: '#E63946' },
+  { numero: 2,  cae: 'Cácio Roney Rosa Bernardes',        cor: '#FF9F1C' },
+  { numero: 3,  cae: 'Marcos Osvan Ferreira de Souza',    cor: '#2EC4B6' },
+  { numero: 4,  cae: 'Ir Habbraão Martins Cordeiro',      cor: '#7209B7' },
+  { numero: 5,  cae: 'Joelino Fernandes dos Anjos',       cor: '#4A86E8' },
+  { numero: 6,  cae: 'Ir Moacir Cândido da Silva',        cor: '#C65102' },
+  { numero: 7,  cae: 'Ir Silemon Tito',                   cor: '#2D936C' },
+  { numero: 8,  cae: 'Ir Elias Natanael',                 cor: '#E8B84B' },
+  { numero: 9,  cae: 'Ir Marcos Rogério de Melo',         cor: '#1A5F7A' },
+  { numero: 10, cae: 'Ir Robson Antônio da Silveira',     cor: '#E05C5C' },
+  { numero: 11, cae: 'Ir Carlos Alberto da Silva',        cor: '#6B48C7' },
+];
+
+// ════════════════════════════════════════════
+//  DADOS: CIDADES
+//  (Leopolina = grafia correta de "Leopolina"
+//   mencionada no documento como "Leopolina")
+// ════════════════════════════════════════════
+const CIDADES = [
+  // ── REGIÃO 1 · CAE: Ir Paulo Lopes de Almeida ──
+  { regiaoNumero:1, nome:'Patos de Minas',        coordenadorLocal:'Ir Everaldo',        coordenadorEstadual:'Ir Renilson Sampaio', lat:-18.5795, lng:-46.5185 },
+  { regiaoNumero:1, nome:'Pirapora',               coordenadorLocal:'Ir Martinez',        coordenadorEstadual:'Ir Renilson Sampaio', lat:-17.3408, lng:-44.9424 },
+  { regiaoNumero:1, nome:'Três Marias',            coordenadorLocal:'',                   coordenadorEstadual:'Ir Renilson Sampaio', lat:-18.2067, lng:-45.2431 },
+  { regiaoNumero:1, nome:'Uberlândia',             coordenadorLocal:'Ir Marcos',          coordenadorEstadual:'Ir Renilson Sampaio', lat:-18.9186, lng:-48.2772 },
+  { regiaoNumero:1, nome:'Unaí',                   coordenadorLocal:'Ir Hebert',          coordenadorEstadual:'Ir Renilson Sampaio', lat:-16.3594, lng:-46.9074 },
+  { regiaoNumero:1, nome:'Montes Claros',          coordenadorLocal:'Ir Renilson',        coordenadorEstadual:'Ir Renilson Sampaio', lat:-16.7281, lng:-43.8647 },
+
+  // ── REGIÃO 2 · CAE: Cácio Roney Rosa Bernardes ──
+  { regiaoNumero:2, nome:'Araxá',                  coordenadorLocal:'Ir Luciano',         coordenadorEstadual:'Ir Marcos Roberto',   lat:-19.5929, lng:-46.9400 },
+  { regiaoNumero:2, nome:'Frutal',                 coordenadorLocal:'Ir Isaque',          coordenadorEstadual:'Ir Daniel Nicolau',   lat:-20.0264, lng:-48.9370 },
+
+  // ── REGIÃO 3 · CAE: Marcos Osvan Ferreira de Souza ──
+  { regiaoNumero:3, nome:'Brasília de Minas',      coordenadorLocal:'',                   coordenadorEstadual:'Ir Renilson Sampaio', lat:-16.2014, lng:-44.4264 },
+  { regiaoNumero:3, nome:'Varzelândia',            coordenadorLocal:'',                   coordenadorEstadual:'Ir Renilson Sampaio', lat:-15.7019, lng:-44.0258 },
+
+  // ── REGIÃO 4 · CAE: Ir Habbraão Martins Cordeiro ──
+  { regiaoNumero:4, nome:'Januária',               coordenadorLocal:'',                   coordenadorEstadual:'Ir Renilson Sampaio', lat:-15.4884, lng:-44.3621 },
+  { regiaoNumero:4, nome:'Manga',                  coordenadorLocal:'',                   coordenadorEstadual:'Ir Renilson Sampaio', lat:-14.7561, lng:-43.9333 },
+
+  // ── REGIÃO 5 · CAE: Joelino Fernandes dos Anjos ──
+  { regiaoNumero:5, nome:'Janaúba',                coordenadorLocal:'Ir Walter',          coordenadorEstadual:'Ir Renilson Sampaio', lat:-15.8025, lng:-43.3086 },
+  { regiaoNumero:5, nome:'Monte Azul',             coordenadorLocal:'Ir Jeosafá',         coordenadorEstadual:'Ir Renilson Sampaio', lat:-15.1544, lng:-42.8697 },
+  { regiaoNumero:5, nome:'Salinas',                coordenadorLocal:'Ir Aldeny',          coordenadorEstadual:'Ir Renilson Sampaio', lat:-16.1678, lng:-42.2953 },
+  { regiaoNumero:5, nome:'Rio Pardo de Minas',     coordenadorLocal:'',                   coordenadorEstadual:'Ir Renilson Sampaio', lat:-15.9292, lng:-42.5353 },
+
+  // ── REGIÃO 6 · CAE: Ir Moacir Cândido da Silva ──
+  { regiaoNumero:6, nome:'Almenara',               coordenadorLocal:'Ir Justino',         coordenadorEstadual:'Ir Rafael Souza',     lat:-16.1839, lng:-40.6933 },
+  { regiaoNumero:6, nome:'Pedra Azul',             coordenadorLocal:'Ir Adailton',        coordenadorEstadual:'Ir Rafael Souza',     lat:-16.0081, lng:-41.2756 },
+  { regiaoNumero:6, nome:'Grão Mogol',             coordenadorLocal:'Ir Maciel',          coordenadorEstadual:'Ir Rafael Souza',     lat:-16.5603, lng:-42.8936 },
+
+  // ── REGIÃO 7 · CAE: Ir Silemon Tito ──
+  { regiaoNumero:7, nome:'Formiga',                coordenadorLocal:'Ir Marcelo',         coordenadorEstadual:'Ir Pedro Gomes',      lat:-20.4644, lng:-45.4272 },
+  { regiaoNumero:7, nome:'Guaxupé',                coordenadorLocal:'Ir Rafael',          coordenadorEstadual:'Ir José Augusto',     lat:-21.3072, lng:-46.7117 },
+  { regiaoNumero:7, nome:'Poços de Caldas',        coordenadorLocal:'Ir Paulo',           coordenadorEstadual:'Ir Rafael',           lat:-21.7872, lng:-46.5614 },
+  { regiaoNumero:7, nome:'Pouso Alegre',           coordenadorLocal:'Ir Pedro Gomes',     coordenadorEstadual:'Ir Eustáquio',        lat:-22.2297, lng:-45.9358 },
+  { regiaoNumero:7, nome:'Extrema',                coordenadorLocal:'Ir Marcelo',         coordenadorEstadual:'Ir Pedro Gomes',      lat:-22.8564, lng:-46.3200 },
+  { regiaoNumero:7, nome:'Varginha',               coordenadorLocal:'Ir Maurício',        coordenadorEstadual:'Ir Pedro Gomes',      lat:-21.5511, lng:-45.4303 },
+  { regiaoNumero:7, nome:'Lavras',                 coordenadorLocal:'Ir Samuel',          coordenadorEstadual:'Ir Marcelo',          lat:-21.2453, lng:-44.9997 },
+  { regiaoNumero:7, nome:'Juiz de Fora',           coordenadorLocal:'Ir Paulino',         coordenadorEstadual:'Ir Lourenço',         lat:-21.7642, lng:-43.3503 },
+
+  // ── REGIÃO 8 · CAE: Ir Elias Natanael ──
+  { regiaoNumero:8, nome:'Caxambu',                coordenadorLocal:'Ir Lourenço',        coordenadorEstadual:'Ir Paulino Rogério',  lat:-21.9775, lng:-44.9281 },
+  { regiaoNumero:8, nome:'Leopoldina',             coordenadorLocal:'Ir Mário',           coordenadorEstadual:'Ir Paulino Rogério',  lat:-21.5297, lng:-42.6425 },
+
+  // ── REGIÃO 9 · CAE: Ir Marcos Rogério de Melo ──
+  { regiaoNumero:9, nome:'Belo Horizonte',         coordenadorLocal:'Ir Paulo / Ir Eli',  coordenadorEstadual:'Ir Paulo / Ir Eli',   lat:-19.9167, lng:-43.9345 },
+  { regiaoNumero:9, nome:'Betim',                  coordenadorLocal:'Ir Ronaldo Pimenta', coordenadorEstadual:'Ir Paulo / Ir Eli',   lat:-19.9686, lng:-44.1986 },
+  { regiaoNumero:9, nome:'Ipatinga',               coordenadorLocal:'Ir Ricardo',         coordenadorEstadual:'Ir Paulo / Ir Eli',   lat:-19.4722, lng:-42.5375 },
+
+  // ── SETOR 10 · CAE: Ir Robson Antônio da Silveira ──
+  { regiaoNumero:10, nome:'Ouro Preto',            coordenadorLocal:'Ir Paulo',           coordenadorEstadual:'Ir Rafael Souza',     lat:-20.3856, lng:-43.5036 },
+  { regiaoNumero:10, nome:'Ponte Nova',            coordenadorLocal:'Ir Paulo',           coordenadorEstadual:'Ir Rafael Souza',     lat:-20.4128, lng:-42.9075 },
+  { regiaoNumero:10, nome:'Minas Novas',           coordenadorLocal:'',                   coordenadorEstadual:'Ir Rafael Souza',     lat:-17.2214, lng:-42.5922 },
+  { regiaoNumero:10, nome:'Teófilo Otoni',         coordenadorLocal:'Ir Marconi',         coordenadorEstadual:'Ir Rafael Souza',     lat:-17.8578, lng:-41.5053 },
+  { regiaoNumero:10, nome:'Governador Valadares',  coordenadorLocal:'Ir Rafael',          coordenadorEstadual:'Ir Rafael Souza',     lat:-18.8514, lng:-41.9494 },
+
+  // ── REGIÃO 11 · CAE: Ir Carlos Alberto da Silva ──
+  { regiaoNumero:11, nome:'Manhuaçu',              coordenadorLocal:'Ir Wadson',          coordenadorEstadual:'Ir Rafael Souza',     lat:-20.2578, lng:-42.0283 },
+  { regiaoNumero:11, nome:'Guanhães',              coordenadorLocal:'Ir Paulo',           coordenadorEstadual:'Ir Rafael Souza',     lat:-18.7761, lng:-42.9317 },
+  { regiaoNumero:11, nome:'Diamantina',            coordenadorLocal:'Ir Paulo',           coordenadorEstadual:'Ir Rafael Souza',     lat:-18.2417, lng:-43.6014 },
+];
+
+// ════════════════════════════════════════════
+//  SEED
+// ════════════════════════════════════════════
+const logEl = document.getElementById('log');
+function log(msg, cls = 'log-info') {
+  logEl.style.display = 'block';
+  const d = document.createElement('div');
+  d.className = 'log-line ' + cls;
+  d.textContent = msg;
+  logEl.appendChild(d);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+async function runSeed() {
+  const btn = document.getElementById('btn-seed');
+  btn.disabled = true;
+  btn.textContent = '⏳ Executando...';
+
+  log('═══ SEED DARPE ESTADUAL MG ═══', 'log-head');
+  log(`Regiões a inserir: ${REGIOES.length}`, 'log-info');
+  log(`Cidades a inserir: ${CIDADES.length}`, 'log-info');
+  log('', 'log-info');
+
+  let erros = 0;
+
+  // Inserir regiões
+  log('── Inserindo Regiões...', 'log-head');
+  for (const reg of REGIOES) {
+    try {
+      await db.collection('regioes').add(reg);
+      log(`  ✓ Região ${reg.numero} — ${reg.cae}`, 'log-ok');
+    } catch (e) {
+      log(`  ✗ Região ${reg.numero}: ${e.message}`, 'log-err');
+      erros++;
+    }
+  }
+
+  // Inserir cidades
+  log('', 'log-info');
+  log('── Inserindo Cidades...', 'log-head');
+  for (const c of CIDADES) {
+    try {
+      await db.collection('cidades').add({ ...c, ativa: true });
+      log(`  ✓ ${c.nome} (Região ${c.regiaoNumero})`, 'log-ok');
+    } catch (e) {
+      log(`  ✗ ${c.nome}: ${e.message}`, 'log-err');
+      erros++;
+    }
+  }
+
+  log('', 'log-info');
+  const done = document.getElementById('done-msg');
+  if (erros === 0) {
+    log('═══ SEED CONCLUÍDO COM SUCESSO ═══', 'log-head');
+    done.textContent = `✓ Seed concluído! ${REGIOES.length} regiões e ${CIDADES.length} cidades inseridas.`;
+    done.className = 'ok';
+    btn.textContent = '✓ Seed concluído';
+  } else {
+    log(`═══ SEED CONCLUÍDO COM ${erros} ERRO(S) ═══`, 'log-err');
+    done.textContent = `⚠ Seed concluído com ${erros} erro(s). Verifique o log acima.`;
+    done.className = 'err';
+    btn.textContent = '⚠ Seed com erros';
+  }
+  done.style.display = 'block';
+}
+</script>
+</body>
+</html>

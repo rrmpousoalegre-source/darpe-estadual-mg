@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin — DARPE Estadual MG</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+:root {
+  --blue: #033D60; --orange: #DC3C00;
+  --blue-dark: #022a47; --green: #1b7a3e;
+  --red: #c62828; --gray: #f4f6f9;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: Verdana, Geneva, Tahoma, sans-serif; background: var(--gray); min-height: 100vh; }
+
+/* ── LOGIN ── */
+#login-screen {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+}
+.login-card {
+  background: white; border-radius: 10px; padding: 36px 32px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.12); width: 320px; text-align: center;
+}
+.login-logo {
+  width: 56px; height: 56px; background: var(--blue); border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 16px; color: white; font-weight: bold; font-size: 14px;
+  line-height: 1.3;
+}
+.login-card h2 { font-size: 16px; color: var(--blue); margin-bottom: 4px; }
+.login-card p { font-size: 11px; color: #888; margin-bottom: 22px; }
+.login-card input {
+  width: 100%; padding: 10px 12px; border: 1.5px solid #ccc; border-radius: 6px;
+  font-size: 13px; font-family: Verdana, sans-serif; margin-bottom: 12px; outline: none;
+}
+.login-card input:focus { border-color: var(--blue); }
+.login-card button {
+  width: 100%; padding: 10px; background: var(--blue); color: white; border: none;
+  border-radius: 6px; font-size: 13px; font-family: Verdana, sans-serif; cursor: pointer;
+}
+.login-card button:hover { background: var(--blue-dark); }
+#login-err { font-size: 11px; color: var(--red); margin-top: 8px; min-height: 16px; }
+
+/* ── ADMIN LAYOUT ── */
+#admin-screen { display: none; min-height: 100vh; flex-direction: column; }
+
+/* header */
+#adm-header {
+  background: var(--blue); color: white; padding: 0 20px;
+  display: flex; align-items: center; height: 56px; gap: 14px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3); flex-shrink: 0;
+}
+.adm-logo {
+  width: 32px; height: 32px; background: white; border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: bold; color: var(--blue); font-size: 9px; line-height: 1.3; text-align: center;
+}
+#adm-header h1 { font-size: 14px; }
+#adm-header .sp { flex: 1; }
+#adm-header a {
+  color: rgba(255,255,255,0.75); font-size: 11px; text-decoration: none;
+  padding: 6px 10px; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px;
+}
+#adm-header a:hover { background: rgba(255,255,255,0.1); }
+#btn-logout {
+  background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.3);
+  padding: 6px 12px; border-radius: 4px; font-size: 11px;
+  cursor: pointer; font-family: Verdana, sans-serif;
+}
+
+/* tabs */
+#tabs {
+  background: white; border-bottom: 2px solid #dde3e9;
+  display: flex; padding: 0 20px; flex-shrink: 0;
+}
+.tab-btn {
+  padding: 12px 18px; cursor: pointer; font-size: 12px; font-family: Verdana, sans-serif;
+  background: none; border: none; color: #666; border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+}
+.tab-btn.active { color: var(--blue); border-bottom-color: var(--blue); font-weight: bold; }
+
+/* content */
+#adm-content { flex: 1; padding: 20px; overflow-y: auto; }
+.section { display: none; }
+.section.active { display: block; }
+
+/* section header */
+.sec-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 16px;
+}
+.sec-head h2 { font-size: 14px; color: var(--blue); }
+.btn-add {
+  background: var(--blue); color: white; border: none; padding: 8px 14px;
+  border-radius: 5px; font-size: 12px; cursor: pointer; font-family: Verdana, sans-serif;
+}
+.btn-add:hover { background: var(--blue-dark); }
+
+/* table */
+.tbl-wrap { background: white; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); overflow: hidden; }
+table { width: 100%; border-collapse: collapse; }
+th {
+  background: var(--blue); color: white; padding: 10px 12px;
+  font-size: 11px; text-align: left; font-weight: bold;
+}
+td { padding: 9px 12px; font-size: 11px; color: #333; border-bottom: 1px solid #eef0f3; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f7f9fc; }
+.color-chip {
+  width: 18px; height: 18px; border-radius: 50%; display: inline-block; vertical-align: middle;
+  margin-right: 6px; border: 1px solid rgba(0,0,0,0.1);
+}
+.btn-edit, .btn-del {
+  padding: 4px 10px; border-radius: 4px; font-size: 10px; cursor: pointer;
+  border: none; font-family: Verdana, sans-serif; margin-left: 4px;
+}
+.btn-edit { background: #e3f0fb; color: var(--blue); }
+.btn-edit:hover { background: #c8e1f5; }
+.btn-del { background: #fdecea; color: var(--red); }
+.btn-del:hover { background: #f9ccc9; }
+.no-data { padding: 24px; text-align: center; color: #aaa; font-size: 12px; }
+
+/* filter bar */
+.filter-bar { display: flex; gap: 10px; margin-bottom: 14px; align-items: center; }
+.filter-bar select, .filter-bar input {
+  padding: 7px 10px; border: 1.5px solid #ccc; border-radius: 5px;
+  font-size: 12px; font-family: Verdana, sans-serif; outline: none;
+}
+.filter-bar select:focus, .filter-bar input:focus { border-color: var(--blue); }
+
+/* ── MODAL ── */
+#modal-overlay {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+  z-index: 1000; align-items: center; justify-content: center; padding: 20px;
+}
+#modal-overlay.open { display: flex; }
+.modal {
+  background: white; border-radius: 10px; width: 100%; max-width: 540px;
+  max-height: 90vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+}
+.modal-head {
+  background: var(--blue); color: white; padding: 14px 18px;
+  display: flex; justify-content: space-between; align-items: center;
+  border-radius: 10px 10px 0 0; position: sticky; top: 0; z-index: 10;
+}
+.modal-head h3 { font-size: 13px; }
+.modal-close { background: none; border: none; color: white; font-size: 18px; cursor: pointer; }
+.modal-body { padding: 18px; }
+
+.form-row { margin-bottom: 14px; }
+.form-row label { display: block; font-size: 10px; font-weight: bold; color: #555; text-transform: uppercase; letter-spacing: 0.7px; margin-bottom: 5px; }
+.form-row input, .form-row select, .form-row textarea {
+  width: 100%; padding: 9px 10px; border: 1.5px solid #ccc; border-radius: 5px;
+  font-size: 12px; font-family: Verdana, sans-serif; outline: none; color: #333;
+}
+.form-row input:focus, .form-row select:focus { border-color: var(--blue); }
+.form-row .hint { font-size: 10px; color: #aaa; margin-top: 3px; }
+
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+
+.color-row { display: flex; align-items: center; gap: 10px; }
+.color-row input[type="color"] { width: 44px; height: 36px; padding: 2px; border: 1.5px solid #ccc; border-radius: 5px; cursor: pointer; }
+
+/* mini map */
+#coord-map-wrap { margin-top: 6px; }
+#coord-map {
+  width: 100%; height: 220px; border-radius: 6px;
+  border: 1.5px solid #ccc; overflow: hidden;
+}
+.coord-hint { font-size: 10px; color: #888; margin-top: 4px; text-align: center; }
+.coord-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
+
+.modal-foot {
+  padding: 12px 18px; border-top: 1px solid #eee;
+  display: flex; justify-content: flex-end; gap: 10px;
+  position: sticky; bottom: 0; background: white;
+  border-radius: 0 0 10px 10px;
+}
+.btn-cancel {
+  padding: 8px 16px; border: 1.5px solid #ccc; background: white;
+  border-radius: 5px; font-size: 12px; cursor: pointer; font-family: Verdana, sans-serif; color: #555;
+}
+.btn-cancel:hover { background: #f5f5f5; }
+.btn-save {
+  padding: 8px 18px; background: var(--blue); color: white;
+  border: none; border-radius: 5px; font-size: 12px; cursor: pointer; font-family: Verdana, sans-serif;
+}
+.btn-save:hover { background: var(--blue-dark); }
+
+/* toast */
+#toast {
+  position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+  padding: 12px 18px; border-radius: 6px; font-size: 12px;
+  color: white; display: none;
+  font-family: Verdana, sans-serif; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+#toast.ok { background: var(--green); }
+#toast.err { background: var(--red); }
+
+/* loading */
+#adm-loading {
+  position: fixed; inset: 0; background: rgba(3,61,96,0.9);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 5000; flex-direction: column;
+}
+.spin { width: 40px; height: 40px; border: 3px solid rgba(255,255,255,0.2); border-top-color: white; border-radius: 50%; animation: spin 0.7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+#adm-loading p { color: white; margin-top: 12px; font-size: 12px; }
+
+/* confirm */
+#confirm-overlay {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+  z-index: 2000; align-items: center; justify-content: center;
+}
+#confirm-overlay.open { display: flex; }
+.confirm-box {
+  background: white; border-radius: 8px; padding: 24px; max-width: 360px; width: 90%;
+  text-align: center; box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+}
+.confirm-box h4 { font-size: 14px; color: #1a1a1a; margin-bottom: 8px; }
+.confirm-box p { font-size: 12px; color: #666; margin-bottom: 18px; }
+.confirm-btns { display: flex; gap: 10px; justify-content: center; }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">CCB<br>MG</div>
+    <h2>DARPE Estadual</h2>
+    <p>Área administrativa — acesso restrito</p>
+    <input type="password" id="pwd" placeholder="Senha de acesso"
+           onkeydown="if(event.key==='Enter') doLogin()">
+    <button onclick="doLogin()">Entrar</button>
+    <div id="login-err"></div>
+  </div>
+</div>
+
+<!-- ADMIN -->
+<div id="admin-screen" style="display:none; flex-direction:column; min-height:100vh">
+  <div id="adm-loading"><div class="spin"></div><p>Carregando...</p></div>
+
+  <div id="adm-header">
+    <div class="adm-logo">CCB<br>MG</div>
+    <h1>Admin · DARPE Estadual MG</h1>
+    <div class="sp"></div>
+    <a href="index.html">← Ver Mapa</a>
+    <button id="btn-logout" onclick="logout()" style="margin-left:8px">Sair</button>
+  </div>
+
+  <div id="tabs">
+    <button class="tab-btn active" onclick="showTab('regioes', this)">🗺 Regiões</button>
+    <button class="tab-btn" onclick="showTab('cidades', this)">📍 Cidades</button>
+  </div>
+
+  <div id="adm-content">
+    <!-- REGIÕES -->
+    <div id="sec-regioes" class="section active">
+      <div class="sec-head">
+        <h2>Gerenciar Regiões</h2>
+        <button class="btn-add" onclick="openRegiaoModal()">+ Nova Região</button>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Nº</th><th>Cor</th><th>Ancião CAE</th><th>Cidades</th><th>Ações</th>
+            </tr>
+          </thead>
+          <tbody id="regioes-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- CIDADES -->
+    <div id="sec-cidades" class="section">
+      <div class="sec-head">
+        <h2>Gerenciar Cidades</h2>
+        <button class="btn-add" onclick="openCidadeModal()">+ Nova Cidade</button>
+      </div>
+      <div class="filter-bar">
+        <select id="filter-reg" onchange="renderCidades()">
+          <option value="">Todas as regiões</option>
+        </select>
+        <input type="text" id="filter-city" placeholder="Buscar cidade..." oninput="renderCidades()">
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Cidade</th><th>Região</th><th>Coord. Local</th><th>Coord. Estadual</th><th>Lat / Lng</th><th>Ações</th>
+            </tr>
+          </thead>
+          <tbody id="cidades-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div id="modal-overlay">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="modal-title">Formulário</h3>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-foot">
+      <button class="btn-cancel" onclick="closeModal()">Cancelar</button>
+      <button class="btn-save" onclick="saveModal()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- CONFIRM -->
+<div id="confirm-overlay">
+  <div class="confirm-box">
+    <h4>⚠ Confirmar exclusão</h4>
+    <p id="confirm-msg">Tem certeza que deseja excluir este item?</p>
+    <div class="confirm-btns">
+      <button class="btn-cancel" onclick="closeConfirm()">Cancelar</button>
+      <button class="btn-save" style="background:#c62828" id="confirm-ok">Excluir</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+<script>
+// ════════════════════════════════════════════
+//  FIREBASE CONFIG — cole aqui as suas chaves
+// ════════════════════════════════════════════
+const firebaseConfig = {
+  apiKey: "AIzaSyDvLEtfAFKakg9Lfi7qdQl3FxmJW4QvqfI",
+  authDomain: "darpe-estadual-mg.firebaseapp.com",
+  projectId: "darpe-estadual-mg",
+  storageBucket: "darpe-estadual-mg.firebasestorage.app",
+  messagingSenderId: "768789192963",
+  appId: "1:768789192963:web:bc758d4ea46fb3ff3bc936"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// ══ SENHA ══
+const SENHA = 'darpe2026MG';
+
+function doLogin() {
+  const val = document.getElementById('pwd').value;
+  if (val === SENHA) {
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('admin-screen').style.display = 'flex';
+    loadAll();
+  } else {
+    document.getElementById('login-err').textContent = 'Senha incorreta.';
+  }
+}
+function logout() {
+  location.reload();
+}
+
+// ══ DADOS ══
+let regioes = [], cidades = [];
+let modalMode = '', editId = null;
+let coordMap = null, coordMarker = null;
+
+async function loadAll() {
+  try {
+    const [rs, cs] = await Promise.all([
+      db.collection('regioes').orderBy('numero').get(),
+      db.collection('cidades').get()
+    ]);
+    regioes = rs.docs.map(d => ({ id: d.id, ...d.data() }));
+    cidades = cs.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderRegioes();
+    renderCidades();
+    populateRegFilter();
+    document.getElementById('adm-loading').style.display = 'none';
+  } catch (err) {
+    console.error(err);
+    showToast('Erro ao carregar dados: ' + err.message, 'err');
+    document.getElementById('adm-loading').style.display = 'none';
+  }
+}
+
+// ══ TABS ══
+function showTab(name, btn) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(`sec-${name}`).classList.add('active');
+}
+
+// ══ REGIÕES TABLE ══
+function renderRegioes() {
+  const tb = document.getElementById('regioes-tbody');
+  if (!regioes.length) {
+    tb.innerHTML = '<tr><td colspan="5" class="no-data">Nenhuma região cadastrada.</td></tr>';
+    return;
+  }
+  tb.innerHTML = regioes.map(r => {
+    const cnt = cidades.filter(c => c.regiaoNumero === r.numero).length;
+    return `<tr>
+      <td><strong>${r.numero}</strong></td>
+      <td><span class="color-chip" style="background:${r.cor}"></span>${r.cor}</td>
+      <td>${r.cae}</td>
+      <td>${cnt}</td>
+      <td>
+        <button class="btn-edit" onclick="openRegiaoModal('${r.id}')">✏ Editar</button>
+        <button class="btn-del" onclick="confirmDelete('regiao','${r.id}','Região ${r.numero}')">🗑 Excluir</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// ══ CIDADES TABLE ══
+function populateRegFilter() {
+  const sel = document.getElementById('filter-reg');
+  sel.innerHTML = '<option value="">Todas as regiões</option>';
+  regioes.forEach(r => {
+    const opt = document.createElement('option');
+    opt.value = r.numero;
+    opt.textContent = `Região ${r.numero} — ${r.cae}`;
+    sel.appendChild(opt);
+  });
+}
+
+function renderCidades() {
+  const tb = document.getElementById('cidades-tbody');
+  const fReg = document.getElementById('filter-reg').value;
+  const fCity = document.getElementById('filter-city').value.toLowerCase();
+
+  let list = cidades;
+  if (fReg) list = list.filter(c => c.regiaoNumero === parseInt(fReg));
+  if (fCity) list = list.filter(c => c.nome.toLowerCase().includes(fCity));
+  list = list.slice().sort((a,b) => a.regiaoNumero - b.regiaoNumero || a.nome.localeCompare(b.nome));
+
+  if (!list.length) {
+    tb.innerHTML = '<tr><td colspan="6" class="no-data">Nenhuma cidade encontrada.</td></tr>';
+    return;
+  }
+  const regMap = {};
+  regioes.forEach(r => regMap[r.numero] = r);
+
+  tb.innerHTML = list.map(c => {
+    const reg = regMap[c.regiaoNumero];
+    const regBadge = reg
+      ? `<span style="display:inline-flex;align-items:center;gap:5px"><span class="color-chip" style="background:${reg.cor}"></span>Reg. ${c.regiaoNumero}</span>`
+      : `Reg. ${c.regiaoNumero}`;
+    return `<tr>
+      <td><strong>${c.nome}</strong></td>
+      <td>${regBadge}</td>
+      <td>${c.coordenadorLocal || '<span style="color:#ccc">—</span>'}</td>
+      <td>${c.coordenadorEstadual || '<span style="color:#ccc">—</span>'}</td>
+      <td style="font-size:10px;color:#888">${(c.lat||'?').toString().slice(0,8)}, ${(c.lng||'?').toString().slice(0,8)}</td>
+      <td>
+        <button class="btn-edit" onclick="openCidadeModal('${c.id}')">✏ Editar</button>
+        <button class="btn-del" onclick="confirmDelete('cidade','${c.id}','${c.nome}')">🗑 Excluir</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// ══ MODAL REGIÃO ══
+function openRegiaoModal(id = null) {
+  modalMode = 'regiao';
+  editId = id;
+  const reg = id ? regioes.find(r => r.id === id) : null;
+  document.getElementById('modal-title').textContent = id ? 'Editar Região' : 'Nova Região';
+
+  document.getElementById('modal-body').innerHTML = `
+    <div class="form-row">
+      <label>Número da Região</label>
+      <input type="number" id="f-num" min="1" value="${reg ? reg.numero : ''}">
+    </div>
+    <div class="form-row">
+      <label>Ancião CAE responsável</label>
+      <input type="text" id="f-cae" value="${reg ? reg.cae : ''}" placeholder="Ex: Ir Paulo Lopes de Almeida">
+    </div>
+    <div class="form-row">
+      <label>Cor da região no mapa</label>
+      <div class="color-row">
+        <input type="color" id="f-cor" value="${reg ? reg.cor : '#E63946'}">
+        <span id="f-cor-txt" style="font-size:12px;color:#555">${reg ? reg.cor : '#E63946'}</span>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('f-cor').addEventListener('input', function() {
+    document.getElementById('f-cor-txt').textContent = this.value;
+  });
+
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+// ══ MODAL CIDADE ══
+function openCidadeModal(id = null) {
+  modalMode = 'cidade';
+  editId = id;
+  const c = id ? cidades.find(x => x.id === id) : null;
+  document.getElementById('modal-title').textContent = id ? 'Editar Cidade' : 'Nova Cidade';
+
+  const regOptions = regioes.map(r =>
+    `<option value="${r.numero}" ${c && c.regiaoNumero === r.numero ? 'selected' : ''}>Região ${r.numero} — ${r.cae}</option>`
+  ).join('');
+
+  document.getElementById('modal-body').innerHTML = `
+    <div class="form-row">
+      <label>Nome da Cidade</label>
+      <input type="text" id="f-nome" value="${c ? c.nome : ''}" placeholder="Ex: Pouso Alegre">
+    </div>
+    <div class="form-row">
+      <label>Região</label>
+      <select id="f-regiao">${regOptions}</select>
+    </div>
+    <div class="form-grid">
+      <div class="form-row">
+        <label>Coordenador Local</label>
+        <input type="text" id="f-local" value="${c ? (c.coordenadorLocal||'') : ''}" placeholder="Ex: Ir Pedro Gomes">
+      </div>
+      <div class="form-row">
+        <label>Coordenador Estadual</label>
+        <input type="text" id="f-estadual" value="${c ? (c.coordenadorEstadual||'') : ''}" placeholder="Ex: Ir Renilson Sampaio">
+      </div>
+    </div>
+    <div class="form-row">
+      <label>Coordenadas no mapa</label>
+      <div id="coord-map-wrap">
+        <div id="coord-map"></div>
+        <div class="coord-hint">Clique no mapa para definir a localização da cidade</div>
+        <div class="coord-inputs">
+          <div class="form-row">
+            <label>Latitude</label>
+            <input type="number" step="0.0001" id="f-lat" value="${c ? c.lat : ''}" placeholder="-19.9167">
+          </div>
+          <div class="form-row">
+            <label>Longitude</label>
+            <input type="number" step="0.0001" id="f-lng" value="${c ? c.lng : ''}" placeholder="-43.9345">
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('modal-overlay').classList.add('open');
+
+  // Inicializar mini-mapa
+  setTimeout(() => {
+    if (coordMap) { coordMap.remove(); coordMap = null; coordMarker = null; }
+    const lat = c ? c.lat : -18.5;
+    const lng = c ? c.lng : -44.8;
+    coordMap = L.map('coord-map', { center: [lat, lng], zoom: 6 });
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      attribution: '© CartoDB', subdomains: 'abcd', maxZoom: 18
+    }).addTo(coordMap);
+
+    if (c && c.lat && c.lng) {
+      coordMarker = L.marker([c.lat, c.lng]).addTo(coordMap);
+    }
+
+    coordMap.on('click', function(e) {
+      const { lat, lng } = e.latlng;
+      document.getElementById('f-lat').value = lat.toFixed(6);
+      document.getElementById('f-lng').value = lng.toFixed(6);
+      if (coordMarker) coordMarker.setLatLng([lat, lng]);
+      else coordMarker = L.marker([lat, lng]).addTo(coordMap);
+    });
+
+    ['f-lat','f-lng'].forEach(id => {
+      document.getElementById(id).addEventListener('change', () => {
+        const lt = parseFloat(document.getElementById('f-lat').value);
+        const ln = parseFloat(document.getElementById('f-lng').value);
+        if (!isNaN(lt) && !isNaN(ln)) {
+          if (coordMarker) coordMarker.setLatLng([lt, ln]);
+          else coordMarker = L.marker([lt, ln]).addTo(coordMap);
+          coordMap.setView([lt, ln], 10);
+        }
+      });
+    });
+  }, 80);
+
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('open');
+  if (coordMap) { coordMap.remove(); coordMap = null; coordMarker = null; }
+}
+
+// ══ SALVAR MODAL ══
+async function saveModal() {
+  try {
+    if (modalMode === 'regiao') {
+      const num = parseInt(document.getElementById('f-num').value);
+      const cae = document.getElementById('f-cae').value.trim();
+      const cor = document.getElementById('f-cor').value;
+
+      if (!num || !cae) { showToast('Preencha todos os campos obrigatórios.', 'err'); return; }
+      if (!editId && regioes.find(r => r.numero === num)) {
+        showToast(`Região ${num} já existe.`, 'err'); return;
+      }
+
+      const data = { numero: num, cae, cor };
+      if (editId) {
+        await db.collection('regioes').doc(editId).update(data);
+        showToast('Região atualizada com sucesso.', 'ok');
+      } else {
+        await db.collection('regioes').add(data);
+        showToast('Região criada com sucesso.', 'ok');
+      }
+    } else {
+      const nome = document.getElementById('f-nome').value.trim();
+      const regiaoNumero = parseInt(document.getElementById('f-regiao').value);
+      const coordenadorLocal = document.getElementById('f-local').value.trim();
+      const coordenadorEstadual = document.getElementById('f-estadual').value.trim();
+      const lat = parseFloat(document.getElementById('f-lat').value);
+      const lng = parseFloat(document.getElementById('f-lng').value);
+
+      if (!nome || isNaN(lat) || isNaN(lng)) {
+        showToast('Preencha o nome e as coordenadas.', 'err'); return;
+      }
+
+      const data = { nome, regiaoNumero, coordenadorLocal, coordenadorEstadual, lat, lng, ativa: true };
+      if (editId) {
+        await db.collection('cidades').doc(editId).update(data);
+        showToast('Cidade atualizada com sucesso.', 'ok');
+      } else {
+        await db.collection('cidades').add(data);
+        showToast('Cidade cadastrada com sucesso.', 'ok');
+      }
+    }
+
+    closeModal();
+    await loadAll();
+  } catch (err) {
+    console.error(err);
+    showToast('Erro ao salvar: ' + err.message, 'err');
+  }
+}
+
+// ══ EXCLUIR ══
+let confirmCallback = null;
+function confirmDelete(type, id, label) {
+  const msgs = {
+    regiao: `Excluir a Região "${label}"? As cidades vinculadas a ela não serão excluídas.`,
+    cidade: `Excluir a cidade "${label}"?`
+  };
+  document.getElementById('confirm-msg').textContent = msgs[type];
+  document.getElementById('confirm-ok').onclick = async () => {
+    try {
+      await db.collection(type === 'regiao' ? 'regioes' : 'cidades').doc(id).delete();
+      showToast('Item excluído.', 'ok');
+      closeConfirm();
+      await loadAll();
+    } catch (err) {
+      showToast('Erro ao excluir: ' + err.message, 'err');
+      closeConfirm();
+    }
+  };
+  document.getElementById('confirm-overlay').classList.add('open');
+}
+function closeConfirm() {
+  document.getElementById('confirm-overlay').classList.remove('open');
+}
+
+// ══ TOAST ══
+function showToast(msg, type = 'ok') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = type;
+  el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 3500);
+}
+</script>
+</body>
+</html>

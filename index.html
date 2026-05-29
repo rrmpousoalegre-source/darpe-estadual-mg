@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DARPE Estadual — Minas Gerais</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+:root {
+  --blue: #033D60;
+  --orange: #DC3C00;
+  --blue-light: #EBF4FA;
+  --sidebar-w: 320px;
+  --header-h: 62px;
+  --stats-h: 38px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: Verdana, Geneva, Tahoma, sans-serif;
+  height: 100vh; display: flex; flex-direction: column;
+  background: #f0f4f8; overflow: hidden;
+}
+
+/* HEADER */
+#header {
+  height: var(--header-h); background: var(--blue);
+  display: flex; align-items: center; padding: 0 18px; gap: 14px;
+  flex-shrink: 0; box-shadow: 0 2px 10px rgba(0,0,0,0.35); z-index: 100;
+}
+.hdr-logo {
+  width: 38px; height: 38px; background: white; border-radius: 5px;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: bold; color: var(--blue); font-size: 11px; flex-shrink: 0;
+  line-height: 1.2; text-align: center;
+}
+.hdr-title { color: white; }
+.hdr-title h1 { font-size: 14px; font-weight: bold; letter-spacing: 0.2px; }
+.hdr-title p { font-size: 10px; opacity: 0.75; margin-top: 2px; }
+.hdr-spacer { flex: 1; }
+#btn-admin {
+  background: var(--orange); color: white; border: none;
+  padding: 7px 13px; border-radius: 4px; font-size: 11px;
+  cursor: pointer; font-family: Verdana, sans-serif;
+  text-decoration: none; white-space: nowrap;
+}
+#btn-admin:hover { background: #b83200; }
+
+/* STATS BAR */
+#stats-bar {
+  height: var(--stats-h); background: white;
+  border-bottom: 1px solid #dde3e9;
+  display: flex; align-items: center; padding: 0 14px;
+  gap: 20px; flex-shrink: 0; font-size: 11px;
+}
+.stat { display: flex; align-items: center; gap: 6px; color: #555; }
+.stat-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.stat b { color: var(--blue); }
+#filter-badge {
+  display: none; align-items: center; gap: 6px;
+  background: #fff3e0; color: var(--orange); font-weight: bold;
+  padding: 2px 8px; border-radius: 10px; border: 1px solid #ffcc80;
+}
+#filter-badge button {
+  background: none; border: none; cursor: pointer;
+  color: var(--orange); font-size: 14px; line-height: 1; padding: 0;
+}
+
+/* MAIN AREA */
+#main { flex: 1; display: flex; overflow: hidden; position: relative; }
+
+/* SIDEBAR TOGGLE */
+#sb-toggle {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  left: var(--sidebar-w); z-index: 600;
+  width: 20px; height: 48px; background: white;
+  border: 1px solid #ccc; border-left: none;
+  border-radius: 0 6px 6px 0;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; font-size: 11px; color: #666;
+  transition: left 0.3s; box-shadow: 2px 2px 6px rgba(0,0,0,0.1);
+}
+#sb-toggle:hover { background: #f5f5f5; }
+
+/* SIDEBAR */
+#sidebar {
+  width: var(--sidebar-w); background: white;
+  border-right: 1px solid #dde3e9;
+  display: flex; flex-direction: column;
+  flex-shrink: 0; overflow: hidden;
+  transition: width 0.3s; z-index: 500;
+}
+#sidebar.closed { width: 0; }
+#sidebar.closed + #sb-toggle { left: 0; }
+
+/* SEARCH */
+#search-box { padding: 10px 10px 8px; border-bottom: 1px solid #eee; flex-shrink: 0; }
+#search {
+  width: 100%; padding: 8px 10px; border: 1.5px solid #ccc;
+  border-radius: 6px; font-size: 12px; font-family: Verdana, sans-serif;
+  outline: none; color: #333;
+}
+#search:focus { border-color: var(--blue); }
+
+/* REGION LIST */
+#region-list { flex: 1; overflow-y: auto; padding: 6px; }
+#region-list::-webkit-scrollbar { width: 5px; }
+#region-list::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+
+.rc { /* region card */
+  border-radius: 7px; margin-bottom: 5px;
+  border: 1.5px solid #e8ecf0; overflow: hidden;
+  transition: box-shadow 0.2s;
+}
+.rc:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+.rc.active { border-color: var(--orange); box-shadow: 0 0 0 2px rgba(220,60,0,0.2); }
+
+.rc-head {
+  display: flex; align-items: center;
+  padding: 9px 10px; cursor: pointer; gap: 9px;
+  background: white; user-select: none;
+}
+.rc-badge {
+  width: 30px; height: 30px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: white; font-size: 11px; font-weight: bold; flex-shrink: 0;
+}
+.rc-info { flex: 1; min-width: 0; }
+.rc-title { font-size: 12px; font-weight: bold; color: #1a1a1a; }
+.rc-cae { font-size: 10px; color: #777; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rc-count {
+  font-size: 10px; color: #777; background: #f0f2f5;
+  padding: 2px 7px; border-radius: 10px; flex-shrink: 0;
+}
+.rc-arrow { font-size: 9px; color: #aaa; transition: transform 0.2s; flex-shrink: 0; }
+.rc.open .rc-arrow { transform: rotate(90deg); }
+
+.rc-body {
+  display: none; background: #fafbfc;
+  border-top: 1px solid #eef0f3; padding: 8px 10px 10px;
+}
+.rc.open .rc-body { display: block; }
+
+.cae-block { padding-bottom: 7px; margin-bottom: 7px; border-bottom: 1px dashed #e0e4e8; }
+.cae-lbl { font-size: 9px; text-transform: uppercase; letter-spacing: 0.8px; color: #aaa; margin-bottom: 2px; }
+.cae-val { font-size: 11px; font-weight: bold; color: var(--blue); }
+
+.city-row {
+  display: flex; align-items: flex-start; padding: 5px 2px;
+  border-bottom: 1px solid #f0f2f5; cursor: pointer; gap: 7px;
+}
+.city-row:last-child { border-bottom: none; }
+.city-row:hover .city-name { color: var(--orange); }
+.city-pip { width: 7px; height: 7px; border-radius: 50%; margin-top: 3px; flex-shrink: 0; }
+.city-name { font-size: 11px; font-weight: bold; color: #2c2c2c; line-height: 1.4; }
+.city-sub { font-size: 9px; color: #999; margin-top: 1px; }
+
+/* MAP */
+#map { flex: 1; z-index: 1; }
+
+/* LEGEND */
+#legend {
+  position: absolute; bottom: 28px; right: 10px; z-index: 400;
+  background: white; border-radius: 8px; padding: 10px 12px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.18);
+  font-family: Verdana, sans-serif; min-width: 180px; max-height: 340px;
+  overflow-y: auto;
+}
+#legend::-webkit-scrollbar { width: 4px; }
+#legend::-webkit-scrollbar-thumb { background: #ccc; border-radius: 2px; }
+.leg-title {
+  font-size: 10px; font-weight: bold; text-transform: uppercase;
+  letter-spacing: 0.8px; color: var(--blue); margin-bottom: 8px;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.leg-row {
+  display: flex; align-items: center; gap: 7px;
+  padding: 3px 0; cursor: pointer; font-size: 10px; color: #444;
+}
+.leg-row:hover { color: var(--orange); }
+.leg-dot { width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; }
+
+/* LOADING */
+#loading {
+  position: fixed; inset: 0; background: rgba(3,61,96,0.92);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; z-index: 9999;
+}
+.spin {
+  width: 44px; height: 44px; border: 3px solid rgba(255,255,255,0.2);
+  border-top-color: white; border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+#loading p { color: white; margin-top: 14px; font-size: 12px; opacity: 0.85; }
+
+/* POPUP */
+.pop-wrap { font-family: Verdana, sans-serif; min-width: 220px; }
+.pop-head { display: flex; align-items: center; gap: 9px; margin-bottom: 9px; }
+.pop-num {
+  width: 26px; height: 26px; border-radius: 50%;
+  color: white; font-size: 10px; font-weight: bold;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.pop-city { font-weight: bold; font-size: 13px; color: #111; }
+.pop-reg { font-size: 10px; color: #888; margin-top: 1px; }
+.pop-grid { display: grid; grid-template-columns: 90px 1fr; gap: 3px 6px; margin-top: 2px; }
+.pop-lbl { font-size: 9px; text-transform: uppercase; letter-spacing: 0.7px; color: #aaa; padding-top: 2px; }
+.pop-val { font-size: 11px; color: #2c2c2c; font-weight: 600; }
+.pop-val.none { color: #ccc; font-weight: normal; font-style: italic; }
+
+/* ERROR */
+#err-msg {
+  position: fixed; top: 80px; left: 50%; transform: translateX(-50%);
+  background: #d32f2f; color: white; padding: 12px 20px; border-radius: 6px;
+  font-size: 12px; z-index: 9999; display: none;
+}
+
+/* MOBILE */
+@media (max-width: 700px) {
+  #sidebar {
+    position: absolute; top: 0; bottom: 0; left: 0;
+    height: 100%; z-index: 500; box-shadow: 3px 0 12px rgba(0,0,0,0.2);
+  }
+  #sidebar.closed { width: 0; box-shadow: none; }
+  .hdr-title p { display: none; }
+}
+</style>
+</head>
+<body>
+
+<header id="header">
+  <div class="hdr-logo">CCB<br>MG</div>
+  <div class="hdr-title">
+    <h1>DARPE Estadual — Minas Gerais</h1>
+    <p>Setorização e Responsabilidades · 2026</p>
+  </div>
+  <div class="hdr-spacer"></div>
+  <a href="admin.html" id="btn-admin">⚙ Administrar</a>
+</header>
+
+<div id="stats-bar">
+  <div class="stat">
+    <span class="stat-dot" style="background:#033D60"></span>
+    <span><b id="s-reg">—</b> regiões</span>
+  </div>
+  <div class="stat">
+    <span class="stat-dot" style="background:#DC3C00"></span>
+    <span><b id="s-cid">—</b> cidades</span>
+  </div>
+  <div class="stat">
+    <span class="stat-dot" style="background:#2d7d2d"></span>
+    <span><b id="s-cae">—</b> membros CAE</span>
+  </div>
+  <div id="filter-badge">
+    <span id="filter-txt"></span>
+    <button onclick="clearFilter()">✕</button>
+  </div>
+</div>
+
+<div id="loading"><div class="spin"></div><p>Carregando mapa...</p></div>
+<div id="err-msg"></div>
+
+<div id="main">
+  <aside id="sidebar">
+    <div id="search-box">
+      <input type="text" id="search" placeholder="🔍 Buscar cidade, irmão ou CAE..." oninput="doSearch(this.value)">
+    </div>
+    <div id="region-list"></div>
+  </aside>
+  <div id="sb-toggle" onclick="toggleSb()">▶</div>
+  <div id="map"></div>
+  <div id="legend">
+    <div class="leg-title">Regiões <span style="font-weight:normal;opacity:0.6">clique para filtrar</span></div>
+    <div id="leg-items"></div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+<script>
+// ════════════════════════════════════════════
+//  FIREBASE CONFIG — cole aqui as suas chaves
+// ════════════════════════════════════════════
+const firebaseConfig = {
+  apiKey: "AIzaSyDvLEtfAFKakg9Lfi7qdQl3FxmJW4QvqfI",
+  authDomain: "darpe-estadual-mg.firebaseapp.com",
+  projectId: "darpe-estadual-mg",
+  storageBucket: "darpe-estadual-mg.firebasestorage.app",
+  messagingSenderId: "768789192963",
+  appId: "1:768789192963:web:bc758d4ea46fb3ff3bc936"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// ════════════════════════════════════════════
+//  ESTADO GLOBAL
+// ════════════════════════════════════════════
+let regioes = [], cidades = [];
+let markers = {}, hulls = {};
+let activeRegiao = null, sbOpen = true;
+
+// ════════════════════════════════════════════
+//  MAPA LEAFLET
+// ════════════════════════════════════════════
+const map = L.map('map', { center: [-18.5, -44.8], zoom: 6, zoomControl: true });
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+  attribution: '© OpenStreetMap contributors © CartoDB',
+  subdomains: 'abcd', maxZoom: 19
+}).addTo(map);
+
+// ════════════════════════════════════════════
+//  GEOMETRIA — HULL + BUFFER
+// ════════════════════════════════════════════
+function cross(O, A, B) {
+  return (A[0]-O[0])*(B[1]-O[1]) - (A[1]-O[1])*(B[0]-O[0]);
+}
+function convexHull(pts) {
+  if (pts.length < 2) return pts;
+  const s = pts.slice().sort((a,b) => a[0]!==b[0] ? a[0]-b[0] : a[1]-b[1]);
+  const lower = [];
+  for (const p of s) {
+    while (lower.length >= 2 && cross(lower[lower.length-2], lower[lower.length-1], p) <= 0) lower.pop();
+    lower.push(p);
+  }
+  const upper = [];
+  for (const p of s.slice().reverse()) {
+    while (upper.length >= 2 && cross(upper[upper.length-2], upper[upper.length-1], p) <= 0) upper.pop();
+    upper.push(p);
+  }
+  upper.pop(); lower.pop();
+  return lower.concat(upper);
+}
+function expandHull(hull, buf = 0.65) {
+  const cx = hull.reduce((s,p) => s+p[0], 0) / hull.length;
+  const cy = hull.reduce((s,p) => s+p[1], 0) / hull.length;
+  return hull.map(([lat, lng]) => {
+    const dx = lat-cx, dy = lng-cy;
+    const len = Math.sqrt(dx*dx + dy*dy) || 0.0001;
+    return [cx + dx + (dx/len)*buf, cy + dy + (dy/len)*buf];
+  });
+}
+function makeShape(cities) {
+  const pts = cities.map(c => [c.lat, c.lng]);
+  if (pts.length === 1) {
+    return { type:'circle', c: pts[0], r: 75000 };
+  }
+  if (pts.length === 2) {
+    const [p1, p2] = pts;
+    const dx = p2[0]-p1[0], dy = p2[1]-p1[1];
+    const len = Math.sqrt(dx*dx+dy*dy)||1;
+    const buf = 0.55;
+    const px = -dy/len*buf, py = dx/len*buf;
+    const ex = dx/len*buf*0.5, ey = dy/len*buf*0.5;
+    return { type:'polygon', pts: [
+      [p1[0]-ex+px, p1[1]-ey+py],
+      [p2[0]+ex+px, p2[1]+ey+py],
+      [p2[0]+ex-px, p2[1]+ey-py],
+      [p1[0]-ex-px, p1[1]-ey-py]
+    ]};
+  }
+  return { type:'polygon', pts: expandHull(convexHull(pts), 0.6) };
+}
+
+// ════════════════════════════════════════════
+//  RENDERIZAR MAPA
+// ════════════════════════════════════════════
+function renderMap() {
+  Object.values(markers).forEach(m => m.remove());
+  Object.values(hulls).forEach(h => h.remove());
+  markers = {}; hulls = {};
+
+  const regMap = {};
+  regioes.forEach(r => regMap[r.numero] = r);
+
+  // Agrupar cidades por região
+  const byReg = {};
+  cidades.forEach(c => {
+    if (!byReg[c.regiaoNumero]) byReg[c.regiaoNumero] = [];
+    byReg[c.regiaoNumero].push(c);
+  });
+
+  // Hulls de território
+  Object.entries(byReg).forEach(([num, list]) => {
+    const reg = regMap[parseInt(num)];
+    if (!reg) return;
+    const shape = makeShape(list);
+    let layer;
+    if (shape.type === 'circle') {
+      layer = L.circle(shape.c, {
+        radius: shape.r, color: reg.cor, fillColor: reg.cor,
+        fillOpacity: 0.10, weight: 1.5, opacity: 0.30
+      });
+    } else {
+      layer = L.polygon(shape.pts, {
+        color: reg.cor, fillColor: reg.cor,
+        fillOpacity: 0.10, weight: 1.5, opacity: 0.30, smoothFactor: 2
+      });
+    }
+    layer.addTo(map);
+    layer.on('click', () => selectRegiao(parseInt(num)));
+    hulls[num] = layer;
+  });
+
+  // Marcadores de cidades
+  cidades.forEach(c => {
+    const reg = regMap[c.regiaoNumero];
+    if (!reg) return;
+
+    const mk = L.circleMarker([c.lat, c.lng], {
+      radius: 9, color: 'white', weight: 2,
+      fillColor: reg.cor, fillOpacity: 1
+    }).addTo(map);
+
+    const pLocal = c.coordenadorLocal || null;
+    const pEstadual = c.coordenadorEstadual || null;
+
+    mk.bindPopup(`
+      <div class="pop-wrap">
+        <div class="pop-head">
+          <div class="pop-num" style="background:${reg.cor}">${reg.numero}</div>
+          <div>
+            <div class="pop-city">${c.nome}</div>
+            <div class="pop-reg">Região ${reg.numero}</div>
+          </div>
+        </div>
+        <div class="pop-grid">
+          <span class="pop-lbl">CAE</span>
+          <span class="pop-val">${reg.cae}</span>
+          <span class="pop-lbl">Coord. Local</span>
+          <span class="pop-val ${pLocal?'':'none'}">${pLocal || 'Não informado'}</span>
+          <span class="pop-lbl">Coord. Estadual</span>
+          <span class="pop-val ${pEstadual?'':'none'}">${pEstadual || 'Não informado'}</span>
+        </div>
+      </div>
+    `, { maxWidth: 290, minWidth: 230 });
+
+    mk.on('click', () => {
+      selectRegiao(c.regiaoNumero, false);
+    });
+
+    markers[c.id] = mk;
+  });
+}
+
+// ════════════════════════════════════════════
+//  SIDEBAR
+// ════════════════════════════════════════════
+function renderSidebar(search = '') {
+  const container = document.getElementById('region-list');
+  container.innerHTML = '';
+  const regMap = {};
+  regioes.forEach(r => regMap[r.numero] = r);
+
+  const byReg = {};
+  regioes.forEach(r => byReg[r.numero] = []);
+  cidades.forEach(c => { if (byReg[c.regiaoNumero] !== undefined) byReg[c.regiaoNumero].push(c); });
+
+  const sq = search.toLowerCase().trim();
+
+  regioes.slice().sort((a,b) => a.numero - b.numero).forEach(reg => {
+    const list = byReg[reg.numero] || [];
+    const filtered = sq ? list.filter(c =>
+      c.nome.toLowerCase().includes(sq) ||
+      (c.coordenadorLocal||'').toLowerCase().includes(sq) ||
+      (c.coordenadorEstadual||'').toLowerCase().includes(sq) ||
+      reg.cae.toLowerCase().includes(sq)
+    ) : list;
+
+    if (sq && filtered.length === 0) return;
+
+    const isActive = activeRegiao === reg.numero;
+    const isOpen = sq || isActive;
+
+    const card = document.createElement('div');
+    card.className = 'rc' + (isActive ? ' active' : '') + (isOpen ? ' open' : '');
+    card.id = `rc-${reg.numero}`;
+
+    card.innerHTML = `
+      <div class="rc-head" onclick="toggleCard(${reg.numero})">
+        <div class="rc-badge" style="background:${reg.cor}">${reg.numero}</div>
+        <div class="rc-info">
+          <div class="rc-title">Região ${reg.numero}</div>
+          <div class="rc-cae">${reg.cae}</div>
+        </div>
+        <span class="rc-count">${filtered.length}</span>
+        <span class="rc-arrow">▶</span>
+      </div>
+      <div class="rc-body">
+        <div class="cae-block">
+          <div class="cae-lbl">Ancião CAE responsável</div>
+          <div class="cae-val">${reg.cae}</div>
+        </div>
+        ${filtered.map(c => `
+          <div class="city-row" onclick="focusCity('${c.id}')">
+            <span class="city-pip" style="background:${reg.cor}"></span>
+            <div>
+              <div class="city-name">${sq ? hl(c.nome, sq) : c.nome}</div>
+              ${c.coordenadorLocal ? `<div class="city-sub">Local: ${c.coordenadorLocal}</div>` : ''}
+              ${c.coordenadorEstadual ? `<div class="city-sub">Estadual: ${c.coordenadorEstadual}</div>` : ''}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+    container.appendChild(card);
+  });
+}
+
+function hl(text, q) {
+  return text.replace(new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'),
+    '<mark style="background:#fff3cd;padding:0">$1</mark>');
+}
+
+// ════════════════════════════════════════════
+//  LEGENDA
+// ════════════════════════════════════════════
+function renderLegend() {
+  const el = document.getElementById('leg-items');
+  el.innerHTML = '';
+  regioes.slice().sort((a,b) => a.numero-b.numero).forEach(r => {
+    const row = document.createElement('div');
+    row.className = 'leg-row';
+    row.innerHTML = `<span class="leg-dot" style="background:${r.cor}"></span><span>Região ${r.numero} — ${r.cae.replace(/^Ir /,'')}</span>`;
+    row.onclick = () => toggleCard(r.numero);
+    el.appendChild(row);
+  });
+}
+
+// ════════════════════════════════════════════
+//  INTERAÇÕES
+// ════════════════════════════════════════════
+function toggleCard(num) {
+  const card = document.getElementById(`rc-${num}`);
+  if (!card) return;
+  const isOpen = card.classList.toggle('open');
+  if (isOpen) selectRegiao(num, true);
+  else if (activeRegiao === num) clearFilter();
+}
+
+function selectRegiao(num, scroll = false) {
+  activeRegiao = num;
+  const reg = regioes.find(r => r.numero === num);
+  if (!reg) return;
+
+  // Hulls: destaca região ativa
+  Object.entries(hulls).forEach(([n, h]) => {
+    const isA = parseInt(n) === num;
+    h.setStyle(isA
+      ? { fillOpacity: 0.22, opacity: 0.65, weight: 2.5 }
+      : { fillOpacity: 0.04, opacity: 0.12, weight: 1 }
+    );
+  });
+
+  // Marcadores
+  Object.entries(markers).forEach(([id, mk]) => {
+    const c = cidades.find(x => x.id === id);
+    const isA = c && c.regiaoNumero === num;
+    mk.setStyle(isA
+      ? { fillOpacity: 1, opacity: 1 }
+      : { fillOpacity: 0.2, opacity: 0.2 }
+    );
+    mk.setRadius(isA ? 11 : 7);
+  });
+
+  // Sidebar
+  document.querySelectorAll('.rc').forEach(c => {
+    c.classList.toggle('active', c.id === `rc-${num}`);
+  });
+  const card = document.getElementById(`rc-${num}`);
+  if (card) {
+    card.classList.add('open');
+    if (scroll) card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  // Badge
+  const badge = document.getElementById('filter-badge');
+  badge.style.display = 'flex';
+  document.getElementById('filter-txt').textContent = `Região ${num} · ${reg.cae}`;
+
+  // Fit mapa
+  const citiesInReg = cidades.filter(c => c.regiaoNumero === num);
+  if (citiesInReg.length > 0) {
+    const bounds = L.latLngBounds(citiesInReg.map(c => [c.lat, c.lng]));
+    map.fitBounds(bounds.pad(0.35), { maxZoom: 9, animate: true });
+  }
+}
+
+function clearFilter() {
+  activeRegiao = null;
+  Object.values(hulls).forEach(h => h.setStyle({ fillOpacity: 0.10, opacity: 0.30, weight: 1.5 }));
+  Object.values(markers).forEach(mk => { mk.setStyle({ fillOpacity: 1, opacity: 1 }); mk.setRadius(9); });
+  document.querySelectorAll('.rc').forEach(c => c.classList.remove('active'));
+  document.getElementById('filter-badge').style.display = 'none';
+  map.flyTo([-18.5, -44.8], 6, { duration: 0.8 });
+}
+
+function focusCity(id) {
+  const c = cidades.find(x => x.id === id);
+  if (!c) return;
+  map.flyTo([c.lat, c.lng], 11, { duration: 1.0 });
+  setTimeout(() => markers[id] && markers[id].openPopup(), 1100);
+}
+
+function doSearch(val) {
+  renderSidebar(val);
+  const sq = val.toLowerCase().trim();
+  if (!sq) {
+    Object.values(markers).forEach(mk => { mk.setStyle({ fillOpacity: 1, opacity: 1 }); mk.setRadius(9); });
+    return;
+  }
+  const matchIds = new Set();
+  cidades.forEach(c => {
+    const reg = regioes.find(r => r.numero === c.regiaoNumero);
+    if (c.nome.toLowerCase().includes(sq) ||
+        (c.coordenadorLocal||'').toLowerCase().includes(sq) ||
+        (c.coordenadorEstadual||'').toLowerCase().includes(sq) ||
+        (reg && reg.cae.toLowerCase().includes(sq))) {
+      matchIds.add(c.id);
+    }
+  });
+  Object.entries(markers).forEach(([id, mk]) => {
+    if (matchIds.has(id)) { mk.setStyle({ fillOpacity: 1, opacity: 1 }); mk.setRadius(12); }
+    else { mk.setStyle({ fillOpacity: 0.15, opacity: 0.15 }); mk.setRadius(6); }
+  });
+}
+
+function toggleSb() {
+  sbOpen = !sbOpen;
+  const sb = document.getElementById('sidebar');
+  const btn = document.getElementById('sb-toggle');
+  sb.classList.toggle('closed', !sbOpen);
+  btn.textContent = sbOpen ? '◀' : '▶';
+  setTimeout(() => map.invalidateSize(), 310);
+}
+
+// ════════════════════════════════════════════
+//  STATS
+// ════════════════════════════════════════════
+function updateStats() {
+  document.getElementById('s-reg').textContent = regioes.length;
+  document.getElementById('s-cid').textContent = cidades.length;
+  document.getElementById('s-cae').textContent = new Set(regioes.map(r => r.cae)).size;
+}
+
+// ════════════════════════════════════════════
+//  FIREBASE — CARREGAR DADOS
+// ════════════════════════════════════════════
+async function loadData() {
+  try {
+    const [regSnap, cidSnap] = await Promise.all([
+      db.collection('regioes').orderBy('numero').get(),
+      db.collection('cidades').get()
+    ]);
+    regioes = regSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    cidades = cidSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    renderMap();
+    renderSidebar();
+    renderLegend();
+    updateStats();
+
+    document.getElementById('loading').style.display = 'none';
+  } catch (err) {
+    console.error(err);
+    document.getElementById('loading').style.display = 'none';
+    const e = document.getElementById('err-msg');
+    e.style.display = 'block';
+    e.textContent = '⚠ Erro ao carregar dados. Verifique a configuração do Firebase.';
+  }
+}
+
+loadData();
+</script>
+</body>
+</html>
