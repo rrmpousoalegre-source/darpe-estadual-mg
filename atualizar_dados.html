@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Atualizar Dados — DARPE MG</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: Verdana, sans-serif; background: #f0f4f8; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+.card { background: white; border-radius: 10px; padding: 32px; max-width: 620px; width: 100%; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+.logo { width: 48px; height: 48px; background: #033D60; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 11px; margin: 0 auto 16px; line-height: 1.3; text-align: center; }
+h2 { text-align: center; color: #033D60; font-size: 15px; margin-bottom: 4px; }
+p.sub { text-align: center; font-size: 11px; color: #888; margin-bottom: 24px; }
+.info { background: #EBF4FA; border: 1px solid #b8d4e8; border-radius: 6px; padding: 12px; font-size: 11px; color: #033D60; margin-bottom: 20px; line-height: 1.7; }
+button { width: 100%; padding: 12px; background: #033D60; color: white; border: none; border-radius: 6px; font-size: 13px; cursor: pointer; font-family: Verdana, sans-serif; }
+button:hover { background: #022a47; }
+button:disabled { background: #aaa; cursor: not-allowed; }
+#log { margin-top: 20px; background: #0D1B2A; border-radius: 6px; padding: 14px; font-family: monospace; font-size: 11px; max-height: 360px; overflow-y: auto; display: none; }
+.ll { padding: 2px 0; }
+.ok { color: #69db7c; } .skip { color: #aaa; } .err { color: #ff6b6b; } .head { color: #ffd43b; font-weight: bold; }
+#done { display: none; text-align: center; margin-top: 14px; font-size: 12px; font-weight: bold; padding: 10px; border-radius: 6px; }
+#done.ok { background: #E8F5E9; color: #1b7a3e; }
+#done.err { background: #FDECEA; color: #c62828; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">CCB<br>MG</div>
+  <h2>Atualização de Dados — 2026</h2>
+  <p class="sub">Aplica a nova setorização do DARPE Estadual MG</p>
+  <div class="info">
+    <b>O que será feito:</b><br>
+    ✓ Remove nomes de CAE das regiões (apenas número da região ficará visível)<br>
+    ✓ Atualiza coordenadores locais e estaduais de todas as 40 cidades<br>
+    ✓ Corrige nomes e responsáveis conforme apresentação 2026
+  </div>
+  <button id="btn" onclick="rodar()">▶ Executar Atualização</button>
+  <div id="log"></div>
+  <div id="done"></div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyDvLEtfAFKakg9Lfi7qdQl3FxmJW4QvqfI",
+  authDomain: "darpe-estadual-mg.firebaseapp.com",
+  projectId: "darpe-estadual-mg",
+  storageBucket: "darpe-estadual-mg.firebasestorage.app",
+  messagingSenderId: "768789192963",
+  appId: "1:768789192963:web:bc758d4ea46fb3ff3bc936"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// ── Novos dados de coordenadores (Apresentação 2026) ──
+const CIDADES = [
+  // REGIÃO 1
+  { nome:'Patos de Minas',        local:'Ir. Everaldo',              estadual:'Ir. Daniel Nicolau' },
+  { nome:'Pirapora',               local:'Ir. Martinez',              estadual:'Ir. Marcos Roberto' },
+  { nome:'Três Marias',            local:'',                          estadual:'Ir. Marcos Roberto' },
+  { nome:'Uberlândia',             local:'Ir. Marcos',                estadual:'Ir. Marcos Roberto' },
+  { nome:'Unaí',                   local:'Ir. Herbert',               estadual:'Ir. Daniel Nicolau' },
+  { nome:'Montes Claros',          local:'Ir. Renilson',              estadual:'Ir. Renilson Sampaio' },
+  // REGIÃO 2
+  { nome:'Araxá',                  local:'Ir. Luciano',               estadual:'Ir. Marcos Roberto' },
+  { nome:'Frutal',                 local:'Ir. Isaque',                estadual:'Ir. Daniel Nicolau' },
+  // REGIÃO 3
+  { nome:'Brasília de Minas',      local:'',                          estadual:'Ir. Renilson Sampaio' },
+  { nome:'Varzelândia',            local:'',                          estadual:'Ir. Renilson Sampaio' },
+  // REGIÃO 4
+  { nome:'Januária',               local:'',                          estadual:'Ir. Osmar Lobato' },
+  { nome:'Manga',                  local:'',                          estadual:'Ir. Osmar Lobato' },
+  // REGIÃO 5
+  { nome:'Janaúba',                local:'Ir. Walter',                estadual:'Ir. Eli Santana' },
+  { nome:'Monte Azul',             local:'Ir. Jeosafá',               estadual:'Ir. Eli Santana' },
+  { nome:'Salinas',                local:'Ir. Aldeny',                estadual:'Ir. Renilson Sampaio' },
+  { nome:'Rio Pardo de Minas',     local:'',                          estadual:'Ir. Renilson Sampaio' },
+  // REGIÃO 6
+  { nome:'Almenara',               local:'Ir. Justino',               estadual:'Ir. Rafael Souza' },
+  { nome:'Pedra Azul',             local:'Ir. Adailton',              estadual:'Ir. Rafael Souza' },
+  { nome:'Grão Mogol',             local:'Ir. Maciel',                estadual:'Ir. Eli Santana' },
+  // REGIÃO 7
+  { nome:'Formiga',                local:'Ir. Marcelo Souza',         estadual:'Ir. Marcelo Souza' },
+  { nome:'Guaxupé',                local:'Ir. Rafael Pereira',        estadual:'Ir. Rafael Pereira' },
+  { nome:'Poços de Caldas',        local:'Ir. Paulo',                 estadual:'Ir. José Augusto' },
+  { nome:'Pouso Alegre',           local:'Ir. Pedro Gomes',           estadual:'Ir. Pedro Gomes' },
+  { nome:'Extrema',                local:'Ir. Toninho / Ir. Marcelo', estadual:'Ir. João Eustáquio' },
+  { nome:'Varginha',               local:'Ir. Maurício',              estadual:'Ir. Pedro Gomes' },
+  { nome:'Lavras',                 local:'Ir. Samuel',                estadual:'Ir. Pedro Gomes' },
+  { nome:'Juiz de Fora',           local:'Ir. Paulino Rogério',       estadual:'Ir. Paulino Rogério' },
+  // REGIÃO 8
+  { nome:'Caxambu',                local:'Ir. Lourenço Raimundo',     estadual:'Ir. Lourenço Raimundo' },
+  { nome:'Leopoldina',             local:'Ir. Mário',                 estadual:'Ir. Paulino Rogério' },
+  // REGIÃO 9
+  { nome:'Belo Horizonte',         local:'Ir. Paulo / Ir. Eli',       estadual:'Ir. Paulo / Ir. Eli' },
+  { nome:'Betim',                  local:'Ir. Ronaldo Pimenta',       estadual:'Ir. Paulo / Ir. Eli' },
+  { nome:'Ipatinga',               local:'Ir. Ricardo',               estadual:'Ir. Paulo / Ir. Eli' },
+  // REGIÃO 10
+  { nome:'Ouro Preto',             local:'Ir. Paulo',                 estadual:'Ir. Paulo Jordelino' },
+  { nome:'Ponte Nova',             local:'Ir. Paulo',                 estadual:'Ir. Paulo Jordelino' },
+  { nome:'Minas Novas',            local:'',                          estadual:'Ir. Paulo Jordelino' },
+  { nome:'Teófilo Otoni',          local:'Ir. Marconi',               estadual:'Ir. Rafael Souza' },
+  { nome:'Governador Valadares',   local:'Ir. Rafael Souza',          estadual:'Ir. Rafael Souza' },
+  // REGIÃO 11
+  { nome:'Manhuaçu',               local:'Ir. Wadson',                estadual:'Ir. Rafael Souza' },
+  { nome:'Guanhães',               local:'Ir. Paulo',                 estadual:'Ir. Paulo / Ir. Eli' },
+  { nome:'Diamantina',             local:'Ir. Paulo',                 estadual:'Ir. Paulo / Ir. Eli' },
+];
+
+const logEl = document.getElementById('log');
+function log(msg, cls='ok') {
+  logEl.style.display = 'block';
+  const d = document.createElement('div');
+  d.className = 'll ' + cls;
+  d.textContent = msg;
+  logEl.appendChild(d);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+async function rodar() {
+  document.getElementById('btn').disabled = true;
+  document.getElementById('btn').textContent = '⏳ Atualizando...';
+  let ok = 0, erros = 0;
+
+  log('══════ ATUALIZAÇÃO DE DADOS 2026 ══════', 'head');
+
+  // 1. Limpar CAE das regiões
+  log('── Removendo nomes CAE das regiões...', 'head');
+  try {
+    const snap = await db.collection('regioes').get();
+    for (const doc of snap.docs) {
+      await doc.ref.update({ cae: '' });
+      log(`  ✓ Região ${doc.data().numero} — CAE removido`, 'ok');
+      ok++;
+    }
+  } catch(e) {
+    log('  ✗ Erro nas regiões: ' + e.message, 'err');
+    erros++;
+  }
+
+  // 2. Atualizar coordenadores das cidades
+  log('', 'ok');
+  log('── Atualizando coordenadores das cidades...', 'head');
+  for (const c of CIDADES) {
+    try {
+      const snap = await db.collection('cidades').where('nome', '==', c.nome).get();
+      if (snap.empty) {
+        log(`  ⚠ Não encontrado: ${c.nome}`, 'err');
+        erros++;
+        continue;
+      }
+      for (const doc of snap.docs) {
+        await doc.ref.update({
+          coordenadorLocal: c.local,
+          coordenadorEstadual: c.estadual
+        });
+        log(`  ✓ ${c.nome}`, 'ok');
+        ok++;
+      }
+    } catch(e) {
+      log(`  ✗ ${c.nome}: ${e.message}`, 'err');
+      erros++;
+    }
+  }
+
+  log('', 'ok');
+  const done = document.getElementById('done');
+  if (erros === 0) {
+    log('══════ ATUALIZAÇÃO CONCLUÍDA ══════', 'head');
+    done.textContent = `✓ Pronto! ${ok} registros atualizados. Recarregue o mapa para ver.`;
+    done.className = 'ok';
+    document.getElementById('btn').textContent = '✓ Concluído';
+  } else {
+    log(`══════ CONCLUÍDO COM ${erros} ERRO(S) ══════`, 'err');
+    done.textContent = `⚠ ${ok} atualizados, ${erros} erro(s).`;
+    done.className = 'err';
+    document.getElementById('btn').textContent = '⚠ Verificar erros';
+  }
+  done.style.display = 'block';
+}
+</script>
+</body>
+</html>
