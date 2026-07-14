@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
 <style>
 :root {
   --blue: #033D60; --orange: #DC3C00;
@@ -269,7 +270,9 @@ tr:hover td { background: #f7f9fc; }
     <div class="login-logo">CCB<br>MG</div>
     <h2>DARPE Estadual</h2>
     <p>Área administrativa — acesso restrito</p>
-    <input type="password" id="pwd" placeholder="Senha de acesso"
+    <input type="email" id="login-email" placeholder="E-mail (ex: regiao01@darpe.mg)"
+           onkeydown="if(event.key==='Enter') document.getElementById('pwd').focus()">
+    <input type="password" id="pwd" placeholder="Senha"
            onkeydown="if(event.key==='Enter') doLogin()">
     <button onclick="doLogin()">Entrar</button>
     <div id="login-err"></div>
@@ -284,6 +287,7 @@ tr:hover td { background: #f7f9fc; }
     <div class="adm-logo">CCB<br>MG</div>
     <h1>Admin · DARPE Estadual MG</h1>
     <div class="sp"></div>
+    <span id="user-label" style="color:rgba(255,255,255,0.65);font-size:11px;margin-right:8px"></span>
     <a href="index.html">← Ver Mapa</a>
     <button id="btn-logout" onclick="logout()" style="margin-left:8px">Sair</button>
   </div>
@@ -339,26 +343,26 @@ tr:hover td { background: #f7f9fc; }
     <!-- RELATÓRIO -->
     <div id="sec-relatorio" class="section">
       <div class="sec-head"><h2>Gerar Relatório PDF</h2></div>
-      <div class="rel-grid">
+      <div class="rel-grid" id="rel-grid-macro">
 
-        <div class="rel-card">
+        <div class="rel-card" id="card-macro">
           <div class="rel-icon">🗺</div>
           <div class="rel-title">Visão Macro</div>
-          <div class="rel-desc">Mapa geral de Minas Gerais com todas as regiões coloridas, tabela resumo com todos os anciães CAE e alcance territorial de cada região.</div>
+          <div class="rel-desc">Mapa geral de Minas Gerais com todas as regiões coloridas, tabela resumo com todos os coordenadores e alcance territorial.</div>
           <button class="rel-btn" onclick="gerarRelatorio('macro')">▶ Gerar Visão Macro</button>
         </div>
 
-        <div class="rel-card">
+        <div class="rel-card" id="card-completo">
           <div class="rel-icon">📋</div>
           <div class="rel-title">Relatório Completo</div>
-          <div class="rel-desc">Visão macro + página individual por região com mapa de detalhe, tabela de cidades e coordenadores, e alcance territorial.</div>
+          <div class="rel-desc">Visão macro + página individual por região com mapa de detalhe, tabela de cidades e coordenadores.</div>
           <button class="rel-btn" onclick="gerarRelatorio('completo')">▶ Gerar Relatório Completo</button>
         </div>
 
         <div class="rel-card rel-card-wide">
           <div class="rel-icon">📍</div>
           <div class="rel-title">Região Específica</div>
-          <div class="rel-desc">Relatório individual de uma região com mapa de detalhe ampliado, lista de cidades, coordenadores e distância entre os pontos mais distantes.</div>
+          <div class="rel-desc">Relatório individual de uma região com mapa de detalhe, lista de cidades, coordenadores e distâncias.</div>
           <div class="rel-select-row">
             <select id="sel-reg-rel"><option value="">Selecione a região...</option></select>
             <button class="rel-btn" style="margin-top:0" onclick="gerarRelatorioRegiao()">▶ Gerar</button>
@@ -415,22 +419,60 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
+const auth = firebase.auth();
 
-// ══ SENHA ══
-const SENHA = 'darpe2026MG';
+// ══ AUTENTICAÇÃO POR REGIÃO ══
+let currentRegion = null; // 'admin' ou número (1-11)
 
-function doLogin() {
-  const val = document.getElementById('pwd').value;
-  if (val === SENHA) {
+function getRegion(email) {
+  if (!email) return null;
+  if (email === 'admin@darpe.mg') return 'admin';
+  const m = email.match(/^regiao(\d{1,2})@darpe\.mg$/i);
+  return m ? parseInt(m[1]) : null;
+}
+
+// Escuta mudanças de autenticação
+auth.onAuthStateChanged(user => {
+  if (user) {
+    currentRegion = getRegion(user.email);
+    if (currentRegion === null) {
+      // Email não reconhecido — logout imediato
+      auth.signOut();
+      document.getElementById('login-err').textContent = 'Acesso não autorizado.';
+      return;
+    }
+    const label = currentRegion === 'admin' ? 'Admin Geral' : `Região ${currentRegion}`;
+    document.getElementById('user-label').textContent = label;
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('admin-screen').style.display = 'flex';
     loadAll();
   } else {
-    document.getElementById('login-err').textContent = 'Senha incorreta.';
+    currentRegion = null;
+    document.getElementById('login-screen').style.display = 'flex';
+    document.getElementById('admin-screen').style.display = 'none';
+  }
+});
+
+async function doLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const pwd = document.getElementById('pwd').value;
+  const errEl = document.getElementById('login-err');
+  errEl.textContent = '';
+  if (!email || !pwd) { errEl.textContent = 'Preencha e-mail e senha.'; return; }
+  try {
+    await auth.signInWithEmailAndPassword(email, pwd);
+  } catch(e) {
+    if (e.code === 'auth/wrong-password' || e.code === 'auth/user-not-found' ||
+        e.code === 'auth/invalid-credential') {
+      errEl.textContent = 'E-mail ou senha incorretos.';
+    } else {
+      errEl.textContent = 'Erro ao entrar. Tente novamente.';
+    }
   }
 }
+
 function logout() {
-  location.reload();
+  auth.signOut();
 }
 
 // ══ DADOS ══
@@ -450,6 +492,14 @@ async function loadAll() {
     renderCidades();
     populateRegFilter();
     populateRegSelect();
+
+    // Usuário regional: oculta relatórios globais
+    const isAdmin = currentRegion === 'admin';
+    const cardMacro = document.getElementById('card-macro');
+    const cardCompleto = document.getElementById('card-completo');
+    if (cardMacro) cardMacro.style.display = isAdmin ? '' : 'none';
+    if (cardCompleto) cardCompleto.style.display = isAdmin ? '' : 'none';
+
     document.getElementById('adm-loading').style.display = 'none';
   } catch (err) {
     console.error(err);
@@ -469,21 +519,29 @@ function showTab(name, btn) {
 // ══ REGIÕES TABLE ══
 function renderRegioes() {
   const tb = document.getElementById('regioes-tbody');
-  if (!regioes.length) {
-    tb.innerHTML = '<tr><td colspan="5" class="no-data">Nenhuma região cadastrada.</td></tr>';
+  const isAdmin = currentRegion === 'admin';
+  const lista = isAdmin ? regioes : regioes.filter(r => r.numero === currentRegion);
+
+  // Mostrar/ocultar botão de nova região (só admin)
+  const btnNova = document.querySelector('#sec-regioes .btn-add');
+  if (btnNova) btnNova.style.display = isAdmin ? '' : 'none';
+
+  if (!lista.length) {
+    tb.innerHTML = '<tr><td colspan="5" class="no-data">Nenhuma região encontrada.</td></tr>';
     return;
   }
-  tb.innerHTML = regioes.map(r => {
+  tb.innerHTML = lista.map(r => {
     const cnt = cidades.filter(c => c.regiaoNumero === r.numero).length;
+    const acoes = isAdmin
+      ? `<button class="btn-edit" onclick="openRegiaoModal('${r.id}')">✏ Editar</button>
+         <button class="btn-del" onclick="confirmDelete('regiao','${r.id}','Região ${r.numero}')">🗑 Excluir</button>`
+      : `<button class="btn-edit" onclick="openRegiaoModal('${r.id}')">✏ Editar</button>`;
     return `<tr>
       <td><strong>${r.numero}</strong></td>
       <td><span class="color-chip" style="background:${r.cor}"></span>${r.cor}</td>
-      <td>${r.cae}</td>
+      <td>Região ${r.numero}</td>
       <td>${cnt}</td>
-      <td>
-        <button class="btn-edit" onclick="openRegiaoModal('${r.id}')">✏ Editar</button>
-        <button class="btn-del" onclick="confirmDelete('regiao','${r.id}','Região ${r.numero}')">🗑 Excluir</button>
-      </td>
+      <td>${acoes}</td>
     </tr>`;
   }).join('');
 }
@@ -492,12 +550,18 @@ function renderRegioes() {
 function populateRegFilter() {
   const sel = document.getElementById('filter-reg');
   sel.innerHTML = '<option value="">Todas as regiões</option>';
-  regioes.forEach(r => {
+  const lista = currentRegion === 'admin' ? regioes : regioes.filter(r => r.numero === currentRegion);
+  lista.forEach(r => {
     const opt = document.createElement('option');
     opt.value = r.numero;
-    opt.textContent = `Região ${r.numero} — ${r.cae}`;
+    opt.textContent = `Região ${r.numero}`;
     sel.appendChild(opt);
   });
+  // Para usuário regional, pré-seleciona e bloqueia o filtro
+  if (currentRegion !== 'admin' && currentRegion !== null) {
+    sel.value = currentRegion;
+    sel.disabled = true;
+  }
 }
 
 function renderCidades() {
@@ -506,7 +570,12 @@ function renderCidades() {
   const fCity = document.getElementById('filter-city').value.toLowerCase();
 
   let list = cidades;
-  if (fReg) list = list.filter(c => c.regiaoNumero === parseInt(fReg));
+  // Usuário regional só vê sua região
+  if (currentRegion !== 'admin' && currentRegion !== null) {
+    list = list.filter(c => c.regiaoNumero === currentRegion);
+  } else if (fReg) {
+    list = list.filter(c => c.regiaoNumero === parseInt(fReg));
+  }
   if (fCity) list = list.filter(c => c.nome.toLowerCase().includes(fCity));
   list = list.slice().sort((a,b) => a.regiaoNumero - b.regiaoNumero || a.nome.localeCompare(b.nome));
 
@@ -1421,12 +1490,17 @@ function populateRegSelect(){
   const sel=document.getElementById('sel-reg-rel');
   if(!sel)return;
   sel.innerHTML='<option value="">Selecione a região...</option>';
-  regioes.slice().sort((a,b)=>a.numero-b.numero).forEach(r=>{
+  const lista = currentRegion === 'admin' ? regioes : regioes.filter(r => r.numero === currentRegion);
+  lista.slice().sort((a,b)=>a.numero-b.numero).forEach(r=>{
     const o=document.createElement('option');
     o.value=r.numero;
-    o.textContent=`Região ${r.numero} — ${r.cae}`;
+    o.textContent=`Região ${r.numero}`;
     sel.appendChild(o);
   });
+  // Usuário regional: pré-seleciona sua região
+  if (currentRegion !== 'admin' && currentRegion !== null) {
+    sel.value = currentRegion;
+  }
 }
 function setRelProgress(show,msg='Processando...'){
   const el=document.getElementById('rel-progress');

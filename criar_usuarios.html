@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Criar Usuários — DARPE MG</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: Verdana, sans-serif; background: #f0f4f8; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+.card { background: white; border-radius: 10px; padding: 32px; max-width: 580px; width: 100%; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+.logo { width: 48px; height: 48px; background: #033D60; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 11px; margin: 0 auto 16px; line-height: 1.3; text-align: center; }
+h2 { text-align: center; color: #033D60; font-size: 15px; margin-bottom: 4px; }
+p.sub { text-align: center; font-size: 11px; color: #888; margin-bottom: 24px; }
+.info { background: #EBF4FA; border: 1px solid #b8d4e8; border-radius: 6px; padding: 12px; font-size: 11px; color: #033D60; margin-bottom: 20px; line-height: 1.8; }
+table { width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 20px; }
+th { background: #033D60; color: white; padding: 7px 10px; text-align: left; }
+td { padding: 6px 10px; border-bottom: 1px solid #eee; }
+tr:nth-child(even) td { background: #EBF4FA; }
+button { width: 100%; padding: 12px; background: #033D60; color: white; border: none; border-radius: 6px; font-size: 13px; cursor: pointer; font-family: Verdana, sans-serif; }
+button:hover { background: #022a47; }
+button:disabled { background: #aaa; cursor: not-allowed; }
+#log { margin-top: 20px; background: #0D1B2A; border-radius: 6px; padding: 14px; font-family: monospace; font-size: 11px; max-height: 300px; overflow-y: auto; display: none; }
+.ll { padding: 2px 0; }
+.ok { color: #69db7c; } .skip { color: #aaa; } .err { color: #ff6b6b; } .head { color: #ffd43b; font-weight: bold; }
+#done { display: none; text-align: center; margin-top: 14px; font-size: 12px; font-weight: bold; padding: 10px; border-radius: 6px; }
+#done.ok { background: #E8F5E9; color: #1b7a3e; }
+#done.err { background: #FDECEA; color: #c62828; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">CCB<br>MG</div>
+  <h2>Criar Usuários por Região</h2>
+  <p class="sub">Execute uma única vez para criar todos os logins</p>
+
+  <div class="info">
+    <b>Serão criados 12 usuários:</b><br>
+    ✓ 11 usuários regionais (regiao01 a regiao11)<br>
+    ✓ 1 administrador geral (admin)<br><br>
+    Se um usuário já existir, será ignorado sem erro.
+  </div>
+
+  <table>
+    <tr><th>Usuário</th><th>E-mail de acesso</th><th>Senha</th></tr>
+    <tr><td>Admin Geral</td><td>admin@darpe.mg</td><td>darpe2026MG</td></tr>
+    <tr><td>Região 1</td><td>regiao01@darpe.mg</td><td>Reg01*</td></tr>
+    <tr><td>Região 2</td><td>regiao02@darpe.mg</td><td>Reg02*</td></tr>
+    <tr><td>Região 3</td><td>regiao03@darpe.mg</td><td>Reg03*</td></tr>
+    <tr><td>Região 4</td><td>regiao04@darpe.mg</td><td>Reg04*</td></tr>
+    <tr><td>Região 5</td><td>regiao05@darpe.mg</td><td>Reg05*</td></tr>
+    <tr><td>Região 6</td><td>regiao06@darpe.mg</td><td>Reg06*</td></tr>
+    <tr><td>Região 7</td><td>regiao07@darpe.mg</td><td>Reg07*</td></tr>
+    <tr><td>Região 8</td><td>regiao08@darpe.mg</td><td>Reg08*</td></tr>
+    <tr><td>Região 9</td><td>regiao09@darpe.mg</td><td>Reg09*</td></tr>
+    <tr><td>Região 10</td><td>regiao10@darpe.mg</td><td>Reg10*</td></tr>
+    <tr><td>Região 11</td><td>regiao11@darpe.mg</td><td>Reg11*</td></tr>
+  </table>
+
+  <button id="btn" onclick="criarUsuarios()">▶ Criar todos os usuários</button>
+  <div id="log"></div>
+  <div id="done"></div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyDvLEtfAFKakg9Lfi7qdQl3FxmJW4QvqfI",
+  authDomain: "darpe-estadual-mg.firebaseapp.com",
+  projectId: "darpe-estadual-mg",
+  storageBucket: "darpe-estadual-mg.firebasestorage.app",
+  messagingSenderId: "768789192963",
+  appId: "1:768789192963:web:bc758d4ea46fb3ff3bc936"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+
+const USUARIOS = [
+  { email:'admin@darpe.mg',      senha:'darpe2026MG', label:'Admin Geral' },
+  { email:'regiao01@darpe.mg',   senha:'Reg01*',      label:'Região 1'    },
+  { email:'regiao02@darpe.mg',   senha:'Reg02*',      label:'Região 2'    },
+  { email:'regiao03@darpe.mg',   senha:'Reg03*',      label:'Região 3'    },
+  { email:'regiao04@darpe.mg',   senha:'Reg04*',      label:'Região 4'    },
+  { email:'regiao05@darpe.mg',   senha:'Reg05*',      label:'Região 5'    },
+  { email:'regiao06@darpe.mg',   senha:'Reg06*',      label:'Região 6'    },
+  { email:'regiao07@darpe.mg',   senha:'Reg07*',      label:'Região 7'    },
+  { email:'regiao08@darpe.mg',   senha:'Reg08*',      label:'Região 8'    },
+  { email:'regiao09@darpe.mg',   senha:'Reg09*',      label:'Região 9'    },
+  { email:'regiao10@darpe.mg',   senha:'Reg10*',      label:'Região 10'   },
+  { email:'regiao11@darpe.mg',   senha:'Reg11*',      label:'Região 11'   },
+];
+
+const logEl = document.getElementById('log');
+function log(msg, cls='ok') {
+  logEl.style.display = 'block';
+  const d = document.createElement('div');
+  d.className = 'll ' + cls;
+  d.textContent = msg;
+  logEl.appendChild(d);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+async function criarUsuarios() {
+  document.getElementById('btn').disabled = true;
+  document.getElementById('btn').textContent = '⏳ Criando usuários...';
+  let criados = 0, existentes = 0, erros = 0;
+
+  log('══ CRIAÇÃO DE USUÁRIOS DARPE MG ══', 'head');
+
+  for (const u of USUARIOS) {
+    try {
+      await auth.createUserWithEmailAndPassword(u.email, u.senha);
+      await auth.signOut();
+      log(`  ✓ ${u.label} — ${u.email}`, 'ok');
+      criados++;
+    } catch(e) {
+      if (e.code === 'auth/email-already-in-use') {
+        log(`  — ${u.label} já existe (ignorado)`, 'skip');
+        existentes++;
+      } else {
+        log(`  ✗ ${u.label}: ${e.message}`, 'err');
+        erros++;
+      }
+    }
+  }
+
+  const done = document.getElementById('done');
+  if (erros === 0) {
+    log(`\n══ CONCLUÍDO: ${criados} criados, ${existentes} já existiam ══`, 'head');
+    done.textContent = `✓ Pronto! ${criados} usuários criados. ${existentes} já existiam.`;
+    done.className = 'ok';
+    document.getElementById('btn').textContent = '✓ Usuários criados';
+  } else {
+    done.textContent = `⚠ ${criados} criados, ${erros} erro(s). Verifique o log.`;
+    done.className = 'err';
+    document.getElementById('btn').textContent = '⚠ Houve erros';
+  }
+  done.style.display = 'block';
+}
+</script>
+</body>
+</html>
