@@ -281,8 +281,11 @@ body {
   /* Stats bar: oculta no mobile (info fica no bottom nav) */
   #stats-bar { display: none; }
 
-  /* Header compacto */
-  #header { padding: 0 12px; gap: 10px; }
+  /* Header: sticky no mobile, sempre visível no topo */
+  #header {
+    position: sticky; top: 0; z-index: 900;
+    padding: 0 12px; gap: 10px;
+  }
   .hdr-logo { width: 32px; height: 32px; font-size: 9px; }
   .hdr-title h1 { font-size: 12px; }
   .hdr-title p { display: none; }
@@ -291,7 +294,14 @@ body {
   /* Main sem overflow para o nav ficar fora */
   #main { flex-direction: column; }
 
-  /* Mapa ocupa toda a área disponível */
+  /* #main ocupa o espaço abaixo do header sticky */
+  #main {
+    position: relative;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* Mapa ocupa toda a área do #main */
   #map {
     position: absolute; top: 0; left: 0; right: 0;
     bottom: var(--nav-h);
