@@ -289,6 +289,7 @@ tr:hover td { background: #f7f9fc; }
     <div class="sp"></div>
     <span id="user-label" style="color:rgba(255,255,255,0.65);font-size:11px;margin-right:8px"></span>
     <a href="index.html">← Ver Mapa</a>
+    <button id="btn-senha" onclick="abrirAlterarSenha()" style="background:rgba(255,255,255,0.12);color:white;border:1px solid rgba(255,255,255,0.3);padding:6px 12px;border-radius:4px;font-size:11px;cursor:pointer;font-family:Verdana,sans-serif;margin-left:8px">🔑 Alterar Senha</button>
     <button id="btn-logout" onclick="logout()" style="margin-left:8px">Sair</button>
   </div>
 
@@ -384,6 +385,37 @@ tr:hover td { background: #f7f9fc; }
     <div class="modal-foot">
       <button class="btn-cancel" onclick="closeModal()">Cancelar</button>
       <button class="btn-save" onclick="saveModal()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL ALTERAR SENHA -->
+<div id="senha-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:2000;align-items:center;justify-content:center;padding:20px">
+  <div style="background:white;border-radius:10px;width:100%;max-width:380px;box-shadow:0 8px 32px rgba(0,0,0,0.25);overflow:hidden">
+    <div style="background:var(--blue);color:white;padding:14px 18px;display:flex;justify-content:space-between;align-items:center">
+      <h3 style="font-size:13px">🔑 Alterar Senha</h3>
+      <button onclick="fecharAlterarSenha()" style="background:none;border:none;color:white;font-size:18px;cursor:pointer">✕</button>
+    </div>
+    <div style="padding:20px">
+      <p style="font-size:11px;color:#666;margin-bottom:16px">Digite sua senha atual para confirmar a identidade, depois escolha a nova senha.</p>
+      <div class="form-row">
+        <label>Senha atual</label>
+        <input type="password" id="senha-atual" placeholder="Sua senha atual">
+      </div>
+      <div class="form-row">
+        <label>Nova senha</label>
+        <input type="password" id="senha-nova" placeholder="Mínimo 6 caracteres">
+      </div>
+      <div class="form-row">
+        <label>Confirmar nova senha</label>
+        <input type="password" id="senha-confirma" placeholder="Repita a nova senha">
+      </div>
+      <div id="senha-err" style="font-size:11px;color:#c62828;min-height:16px;margin-bottom:8px"></div>
+      <div id="senha-ok" style="font-size:11px;color:#1b7a3e;min-height:16px;margin-bottom:8px;display:none">✓ Senha alterada com sucesso!</div>
+    </div>
+    <div style="padding:12px 20px 16px;border-top:1px solid #eee;display:flex;justify-content:flex-end;gap:10px">
+      <button onclick="fecharAlterarSenha()" style="padding:8px 16px;border:1.5px solid #ccc;background:white;border-radius:5px;font-size:12px;cursor:pointer;font-family:Verdana,sans-serif;color:#555">Cancelar</button>
+      <button onclick="confirmarAlterarSenha()" style="padding:8px 18px;background:var(--blue);color:white;border:none;border-radius:5px;font-size:12px;cursor:pointer;font-family:Verdana,sans-serif" id="btn-confirmar-senha">Confirmar</button>
     </div>
   </div>
 </div>
@@ -1510,6 +1542,52 @@ function setRelProgress(show,msg='Processando...'){
     if(p&&msg)p.textContent=msg;
   }
   document.querySelectorAll('.rel-btn').forEach(b=>b.disabled=show);
+}
+
+// ── Alterar senha ──
+function abrirAlterarSenha() {
+  document.getElementById('senha-atual').value = '';
+  document.getElementById('senha-nova').value = '';
+  document.getElementById('senha-confirma').value = '';
+  document.getElementById('senha-err').textContent = '';
+  document.getElementById('senha-ok').style.display = 'none';
+  document.getElementById('senha-overlay').style.display = 'flex';
+  setTimeout(() => document.getElementById('senha-atual').focus(), 100);
+}
+function fecharAlterarSenha() {
+  document.getElementById('senha-overlay').style.display = 'none';
+}
+async function confirmarAlterarSenha() {
+  const atual    = document.getElementById('senha-atual').value;
+  const nova     = document.getElementById('senha-nova').value;
+  const confirma = document.getElementById('senha-confirma').value;
+  const errEl    = document.getElementById('senha-err');
+  const okEl     = document.getElementById('senha-ok');
+  const btnEl    = document.getElementById('btn-confirmar-senha');
+  errEl.textContent = ''; okEl.style.display = 'none';
+  if (!atual)            { errEl.textContent = 'Digite a senha atual.'; return; }
+  if (nova.length < 6)   { errEl.textContent = 'A nova senha precisa ter pelo menos 6 caracteres.'; return; }
+  if (nova !== confirma) { errEl.textContent = 'As senhas novas não coincidem.'; return; }
+  if (nova === atual)    { errEl.textContent = 'A nova senha deve ser diferente da atual.'; return; }
+  btnEl.disabled = true; btnEl.textContent = '⏳ Aguarde...';
+  try {
+    const user = auth.currentUser;
+    const credential = firebase.auth.EmailAuthProvider.credential(user.email, atual);
+    await user.reauthenticateWithCredential(credential);
+    await user.updatePassword(nova);
+    okEl.style.display = 'block';
+    setTimeout(() => fecharAlterarSenha(), 2000);
+  } catch(e) {
+    if (e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential') {
+      errEl.textContent = 'Senha atual incorreta.';
+    } else if (e.code === 'auth/weak-password') {
+      errEl.textContent = 'Nova senha muito fraca. Use pelo menos 6 caracteres.';
+    } else {
+      errEl.textContent = 'Erro ao alterar senha. Tente novamente.';
+    }
+  } finally {
+    btnEl.disabled = false; btnEl.textContent = 'Confirmar';
+  }
 }
 
 // ── Toast de notificação ──
